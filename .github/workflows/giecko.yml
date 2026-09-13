@@ -1,0 +1,90 @@
+name: 🦎 Giecko Terminal
+
+on:
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: 'Session: "ide" = terminal + VS Code, "terminal" = shell only, "vscode" = VS Code only'
+        required: false
+        default: 'ide'
+        type: choice
+        options: [ide, terminal, vscode]
+      os:
+        description: 'Runner OS (macos = experimental, docker distros unavailable there)'
+        required: false
+        default: 'ubuntu-latest'
+        type: choice
+        options: [ubuntu-latest, macos-latest]
+      distro:
+        description: 'Shell environment: runner OS directly, or a docker distro (linux only)'
+        required: false
+        default: 'runner'
+        type: choice
+        options: [runner, ubuntu, debian, fedora, arch, alpine]
+      user:
+        description: 'Terminal username (letters, numbers, _ and -)'
+        required: false
+        default: 'giecko'
+      password:
+        description: 'Login password (blank = NO auth, anyone with the link gets in)'
+        required: false
+        default: 'giecko'
+      mask:
+        description: 'Streamer mode: hide the tunnel hostname in logs/summary (QR in logs still works)'
+        required: false
+        default: false
+        type: boolean
+      duration_minutes:
+        description: 'How long to keep alive (max 360 = 6h, GitHub limit)'
+        required: false
+        default: '180'
+      packages:
+        description: 'Extra system packages to install (space-separated)'
+        required: false
+        default: ''
+      autosave_minutes:
+        description: 'Snapshot workspace to giecko-saves/ branch every N min (0 = off)'
+        required: false
+        default: '15'
+  # Self-test: every push auto-verifies. Flags via commit message:
+  #   [skip giecko] = skip · [quick] = zero-wait (~40s) · [noauth] = blank password
+  #   [stack=terminal|vscode] · [distro=ubuntu|debian|fedora|arch|alpine] · [mask] · [os=macos]
+  push:
+    branches: [arena/01a09a7b-giecko]
+
+permissions:
+  contents: write # needed for giecko save + run reports
+
+run-name: 🦎 Giecko session
+
+jobs:
+  terminal:
+    # push events can opt out via "[skip giecko]" in the commit message
+    if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip giecko]')
+    runs-on: ${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[os=macos]') && 'macos-latest' || 'ubuntu-latest') || inputs.os }}
+    timeout-minutes: 360
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # NOT auto-exported; reports/save need it
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Annotation probe
+        run: echo "::notice::probe-yaml-hello"
+
+      - name: Dirty workspace (push self-test only, exercises giecko save)
+        if: github.event_name == 'push'
+        run: echo "save-test $GITHUB_RUN_ID @ $(date -u)" > .giecko-save-test.txt
+
+      - name: Start Giecko virtual environment
+        run: |
+          chmod +x scripts/giecko.sh scripts/giecko
+          ./scripts/giecko.sh \
+            "${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[noauth]') && '__BLANK__' || 'test-giecko-123') || inputs.password }}" \
+            "${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[quick]') && '0' || '10') || inputs.duration_minutes }}" \
+            "${{ inputs.packages }}" \
+            "${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[stack=vscode]') && 'vscode' || contains(github.event.head_commit.message, '[stack=terminal]') && 'terminal' || 'ide') || inputs.stack }}" \
+            "${{ github.event_name == 'push' && '0' || inputs.autosave_minutes }}" \
+            "${{ github.event_name == 'push' && 'giecko' || inputs.user }}" \
+            "${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[mask]') || inputs.mask }}" \
+            "${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[distro=alpine]') && 'alpine' || contains(github.event.head_commit.message, '[distro=arch]') && 'arch' || contains(github.event.head_commit.message, '[distro=fedora]') && 'fedora' || contains(github.event.head_commit.message, '[distro=ubuntu]') && 'ubuntu' || contains(github.event.head_commit.message, '[distro=debian]') && 'debian' || 'runner') || inputs.distro }}"
