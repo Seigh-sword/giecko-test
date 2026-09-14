@@ -1,4 +1,4 @@
-name: 🦎 Giecko Terminal
+name:  Giecko Terminal
 
 on:
   workflow_dispatch:
@@ -10,11 +10,11 @@ on:
         type: choice
         options: [ide, terminal, vscode]
       os:
-        description: 'Runner OS (macos = experimental, docker distros unavailable there)'
+        description: 'Runner OS (macos = experimental, windows = beta; docker distros unavailable there)'
         required: false
         default: 'ubuntu-latest'
         type: choice
-        options: [ubuntu-latest, macos-latest]
+        options: [ubuntu-latest, macos-latest, windows-latest]
       distro:
         description: 'Shell environment: runner OS directly, or a docker distro (linux only)'
         required: false
@@ -43,40 +43,34 @@ on:
         required: false
         default: ''
       autosave_minutes:
-        description: 'Snapshot workspace to giecko-saves/ branch every N min (0 = off)'
+        description: 'Snapshot the session work branch every N min (0 = off)'
         required: false
         default: '15'
-  # Self-test: every push auto-verifies. Flags via commit message:
-  #   [skip giecko] = skip · [quick] = zero-wait (~40s) · [noauth] = blank password
-  #   [stack=terminal|vscode] · [distro=ubuntu|debian|fedora|arch|alpine] · [mask] · [os=macos]
   push:
     branches: [arena/01a09a7b-giecko]
 
 permissions:
-  contents: write # needed for giecko save + run reports
+  contents: write
 
-run-name: 🦎 Giecko session
+run-name:  Giecko session
 
 jobs:
   terminal:
-    # push events can opt out via "[skip giecko]" in the commit message
     if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip giecko]')
-    runs-on: ${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[os=macos]') && 'macos-latest' || 'ubuntu-latest') || inputs.os }}
+    runs-on: ${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[os=macos]') && 'macos-latest' || contains(github.event.head_commit.message, '[os=windows]') && 'windows-latest' || 'ubuntu-latest') || inputs.os }}
     timeout-minutes: 360
     env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # NOT auto-exported; reports/save need it
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Annotation probe
+        shell: bash
         run: echo "::notice::probe-yaml-hello"
 
-      - name: Dirty workspace (push self-test only, exercises giecko save)
-        if: github.event_name == 'push'
-        run: echo "save-test $GITHUB_RUN_ID @ $(date -u)" > .giecko-save-test.txt
-
       - name: Start Giecko virtual environment
+        shell: bash
         run: |
           chmod +x scripts/giecko.sh scripts/giecko
           ./scripts/giecko.sh \
