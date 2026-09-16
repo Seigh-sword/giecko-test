@@ -218,23 +218,26 @@ sys_pkgs() {
     || echo "  some apt packages failed (run the install command live to retry)"
   priv apt-get install -y -qq fastfetch 2>/dev/null || true
 }
+fetch() {
+  curl -fsSL --retry 8 --retry-delay 5 --retry-max-time 150 --retry-all-errors "$@"
+}
 dl_cloudflared() {
   command -v cloudflared >/dev/null 2>&1 && return 0
   if [ "$OSNAME" = "Darwin" ]; then
     echo " downloading cloudflared (macOS)..."
-    curl -fsSL -o /tmp/giecko-cfd.tgz "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-$ARCH.tgz" || return 1
+    fetch -o /tmp/giecko-cfd.tgz "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-$ARCH.tgz" || return 1
     tar -xzf /tmp/giecko-cfd.tgz -C /tmp || return 1
     chmod +x /tmp/cloudflared && priv mv /tmp/cloudflared "$BIN_DIR/cloudflared"
     return 0
   fi
   if [ "$IS_WINDOWS" = 1 ]; then
     echo "downloading cloudflared (windows)..."
-    curl -fsSL -o /tmp/giecko-cloudflared.exe https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe || return 1
+    fetch -o /tmp/giecko-cloudflared.exe https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe || return 1
     chmod +x /tmp/giecko-cloudflared.exe && priv mv /tmp/giecko-cloudflared.exe "$BIN_DIR/cloudflared.exe"
     return 0
   fi
   echo "downloading cloudflared..."
-  curl -fsSL -o /tmp/giecko-cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH" \
+  fetch -o /tmp/giecko-cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH" \
     || return 1
   chmod +x /tmp/giecko-cloudflared && priv mv /tmp/giecko-cloudflared "$BIN_DIR/cloudflared"
 }
@@ -248,13 +251,13 @@ dl_ttyd() {
   fi
   if [ "$IS_WINDOWS" = 1 ]; then
     echo "downloading ttyd (windows)..."
-    curl -fsSL -o /tmp/giecko-ttyd.exe https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.win32.exe || return 1
+    fetch -o /tmp/giecko-ttyd.exe https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.win32.exe || return 1
     chmod +x /tmp/giecko-ttyd.exe && priv mv /tmp/giecko-ttyd.exe "$BIN_DIR/ttyd.exe"
     return 0
   fi
   echo "downloading ttyd..."
   TTYD_ARCH="x86_64"; [ "$ARCH" = "arm64" ] && TTYD_ARCH="aarch64"
-  curl -fsSL -o /tmp/giecko-ttyd "https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.$TTYD_ARCH" \
+  fetch -o /tmp/giecko-ttyd "https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.$TTYD_ARCH" \
     || return 1
   chmod +x /tmp/giecko-ttyd && priv mv /tmp/giecko-ttyd "$BIN_DIR/ttyd"
 }
@@ -267,7 +270,7 @@ dl_code() {
   [ "$IS_WINDOWS" = 1 ] && ospat="windows"
   pat="$ospat-$ARCH"
   [ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
-  url=$(curl -fsSL -m 20 "${auth[@]}" https://api.github.com/repos/coder/code-server/releases/latest 2>/dev/null \
+  url=$(fetch -m 20 "${auth[@]}" https://api.github.com/repos/coder/code-server/releases/latest 2>/dev/null \
     | grep -o "https://[^\"]*${pat}[^\"]*\\.tar\\.gz" | head -n 1 || true)
   if [ -z "$url" ]; then
     if [ "$OSNAME" = "Darwin" ]; then
@@ -280,7 +283,7 @@ dl_code() {
     url="https://github.com/coder/code-server/releases/download/v$CODER_VER_FALLBACK/code-server-$CODER_VER_FALLBACK-$ospat-$ARCH.tar.gz"
   fi
   echo " downloading code-server (~100MB)..."
-  curl -fsSL -o /tmp/giecko-code.tar.gz "$url" || return 1
+  fetch -o /tmp/giecko-code.tar.gz "$url" || return 1
 }
 pip_trzsz() {
   [ "$NEED_TTYD" = 1 ] || return 0
