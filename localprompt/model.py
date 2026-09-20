@@ -1,12 +1,13 @@
 import time
 import logging
 from pathlib import Path
-from typing import Optional, List, Iterator
+from typing import Optional, List, Iterator, Dict, Any
 from dataclasses import dataclass
 
 from llama_cpp import Llama
 
-from localchat.config import load_config
+from localprompt.config import load_config
+from localprompt.utils import console
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +31,9 @@ class GenerationResult:
 class ModelInfo:
     name: str
     path: str
-    param_count: int = 0
+    param_count: Any = 0
     context_size: int = 0
     embedding_dim: int = 0
-    tokenizer: Optional[str] = None
 
 
 class ModelRunner:
@@ -49,8 +49,6 @@ class ModelRunner:
         start = time.time()
         n_ctx = self.config.get("n_ctx", 4096)
         n_gpu_layers = self.config.get("n_gpu_layers", 0)
-        _ = self.config.get("temperature", 0.7)
-
         self.llm = Llama(
             model_path=self.model_path,
             n_ctx=n_ctx,
@@ -61,7 +59,6 @@ class ModelRunner:
 
         try:
             meta = getattr(self.llm, "metadata", {}) or {}
-            _ = meta.get("general.architecture", "unknown")
             model_name = meta.get("general.name", Path(self.model_path).stem)
             context_length = int(meta.get("llama.context_length", self.llm.n_ctx()))
             embedding_dim = self.llm.n_embd()
@@ -70,14 +67,13 @@ class ModelRunner:
             _ = int(meta.get("llama.attention.head_count", 0))
             ffn_dim = int(meta.get("llama.feed_forward_length", embedding_dim * 2))
 
-            # Rough parameter count estimation
             param_count = 0
-            param_count += vocab_size * embedding_dim  # token embedding
+            param_count += vocab_size * embedding_dim
             param_count += n_layers * (
                 embedding_dim * 4 * ffn_dim
                 + embedding_dim * embedding_dim * 2
-            )  # transformer layers
-            param_count += vocab_size * embedding_dim  # output projection
+            )
+            param_count += vocab_size * embedding_dim
 
             param_count_display = (
                 f"{param_count / 1e9:.2f}B" if param_count >= 1e9
@@ -91,7 +87,6 @@ class ModelRunner:
                 param_count=param_count_display,
                 context_size=context_length,
                 embedding_dim=embedding_dim,
-                tokenizer=f"vocab={vocab_size}",
             )
         except Exception:
             self.model_info = ModelInfo(
@@ -216,9 +211,5 @@ class ModelRunner:
 
     def __repr__(self):
         if self.model_info:
-            return (
-                f"ModelRunner(name={self.model_info.name}, "
-                f"params={self.model_info.param_count}, "
-                f"ctx={self.model_info.context_size})"
-            )
+            return f"ModelRunner(name={self.model_info.name}, params={self.model_info.param_count}, ctx={self.model_info.context_size})"
         return "ModelRunner(unloaded)"

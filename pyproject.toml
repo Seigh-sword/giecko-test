@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "localchat"
-version = "0.1.0"
-description = "Local AI assistant for running small language models (LLaMA2, Qwen2, etc.)"
+name = "localprompt"
+version = "0.2.0"
+description = "Local AI assistant with agents, swarm mode, memory, providers, MCP, web search & more"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -29,7 +29,7 @@ cuda = [
 ]
 
 [project.scripts]
-localchat = "localchat.cli:main"
+localprompt = "localprompt.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["localchat*"]
+include = ["localprompt*"]

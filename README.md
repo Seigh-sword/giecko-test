@@ -1,16 +1,19 @@
-# localchat
+# localprompt
 
-A local AI assistant for running small language models (LLaMA2, Qwen2, Mistral, Phi, Gemma, etc.) in your terminal. Like Claude Code, but all models run on your own hardware.
+A comprehensive local AI assistant with agents, swarm intelligence, memory, BYOK providers, MCP tools, web search, reasoning, and more.
 
 ## Features
 
-- **Chat with local models** - Interactive conversation with GGUF-format LLMs
-- **Small models first** - Optimized for models like LLaMA2 7B, Qwen2 1.5B-7B, Phi-3, Gemma 2B
-- **Model management** - Download models from HuggingFace, manage local model library
-- **Conversation persistence** - Save and load chat history
-- **Streaming output** - Real-time token streaming during generation
-- **Multiple model formats** - Supports LLaMA2, Qwen2, ChatGLM, and custom chat templates
-- **Configurable** - Temperature, top-p, top-k, repeat penalty, context size
+- **Chat** - Interactive chat with local models
+- **Agent Mode** - AI agents with roles that work as a team
+- **Swarm Mode** - All models collaborate via Hive Mem
+- **TUI** - Full terminal user interface
+- **Memory** - Persistent memory (Hive Mem + Local Mem)
+- **BYOK Providers** - OpenAI, Anthropic, Google, Ollama & more
+- **MCP Support** - Model Context Protocol for tool integration
+- **Web Search** - Built-in web search capabilities
+- **Reasoning** - Chain-of-thought and step-by-step reasoning
+- **Role Rotation** - Agent roles change over time
 
 ## Installation
 
@@ -18,108 +21,104 @@ A local AI assistant for running small language models (LLaMA2, Qwen2, Mistral, 
 pip install -e .
 ```
 
-For CUDA support:
-```bash
-pip install -e .[cuda]
-```
-
 ## Quick Start
 
-### Download a model
-
 ```bash
-localchat download TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF
-localchat download TheBloke/Llama-2-7B-Chat-GGUF
-localchat download TheBloke/Mistral-7B-Instruct-v0.2-GGUF
-localchat download TheBloke/Qwen2-7B-Chat-GGUF
-```
+# Chat with a local model
+localprompt chat ~/.localprompt/models/*.gguf
 
-Models are downloaded from HuggingFace GGUF repositories (TheBloke, bartowski, and others). Use `localchat download-models` to browse popular models.
+# Agent mode with a system prompt
+localprompt agent --role coder --model model.gguf
 
-### List downloaded models
+# Swarm mode - all models collaborate
+localprompt swarm
 
-```bash
-localchat models
-```
+# Start the TUI
+localprompt tui
 
-### Start a chat
-
-```bash
-localchat chat
-localchat chat /path/to/model.gguf
-localchat chat --system "You are a helpful coding assistant."
-```
-
-### Generate a single response
-
-```bash
-localchat generate model.gguf "Hello, how are you?"
-```
-
-### Evaluate with timing info
-
-```bash
-localchat eval model.gguf "Write a Python function to sort a list"
+# Use a BYOK provider
+localprompt chat --provider openai --api-key sk-... -m "Hello"
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `localchat chat [MODEL]` | Start interactive chat session |
-| `localchat generate MODEL PROMPT` | Generate a single response |
-| `localchat eval MODEL PROMPT` | Generate with timing info |
-| `localchat download MODEL_ID` | Download GGUF from HuggingFace (e.g., `TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF`) |
-| `localchat download-models`  | Browse popular models with GGUF availability
-| `localchat info MODEL` | Show model information |
-| `localchat template NAME` | Show chat template for model |
-| `localchat config` | View/edit configuration |
-| `localchat version` | Show version info |
+| `localprompt chat` | Chat with models (local or providers) |
+| `localprompt agent` | Agent mode with role |
+| `localprompt swarm` | Swarm mode with all models |
+| `localprompt tui` | Terminal UI |
+| `localprompt agent` | Agent mode |
+| `localprompt download` | Download models |
+| `localprompt models` | List models |
+| `localprompt providers` | List/configure providers |
+| `localprompt mcp` | MCP tool management |
+| `localprompt memory` | Memory management |
+| `localprompt hive` | Hive Mem operations |
+| `localprompt config` | Configuration |
+| `localprompt version` | Version info |
 
-## Chat Commands
+## Providers (BYOK)
 
-Inside the chat session, you can use:
-
-| Command | Description |
-|---------|-------------|
-| `/clear` | Clear conversation history |
-| `/history` | Show conversation history |
-| `/save [name]` | Save conversation |
-| `/load <name>` | Load conversation |
-| `/model [path]` | Switch model or list models |
-| `/exit` | Exit |
-
-### Single Prompt Mode
-
-Run a single prompt and exit:
+LocalPrompt supports multiple AI providers. Configure with:
 
 ```bash
-localchat chat model.gguf --prompt "Explain quantum computing"
-localchat chat model.gguf -p "Explain quantum computing" -m 256
+# OpenAI
+localprompt providers --set openai --api-key sk-...
+
+# Anthropic
+localprompt providers --set anthropic --api-key sk-ant-...
+
+# Google Gemini
+localprompt providers --set google --api-key ai-...
+
+# Ollama (local, no key)
+localprompt providers --set ollama --base-url http://localhost:11434
 ```
 
-### Quick Generate
+## MCP
+
+Model Context Protocol support for tool integration:
 
 ```bash
-localchat generate model.gguf "Explain quantum computing"
-localchat eval model.gguf "Write a Python function to sort a list"
+# Add an MCP server
+localprompt mcp add filesystem --command npx --args -y @modelcontextprotocol/server-filesystem /tmp
+
+# List MCP tools
+localprompt mcp list
+
+# Use MCP tools in agent mode
+localprompt agent --role researcher --use-mcp
 ```
 
-`generate` outputs the response text. `eval` also shows timing and token statistics.
+## Memory
 
-## Configuration
-
-Config is stored at `~/.localchat/config.json`. You can modify it with:
+- **Hive Mem** - Shared memory across all agents and sessions
+- **Local Mem** - Per-agent private memory
 
 ```bash
-localchat config --set temperature 0.5
-localchat config --list
+# View Hive Mem
+localprompt hive --view
+
+# Search memory
+localprompt memory search "project goals"
+
+# Clear memory
+localprompt memory clear
 ```
 
-## Model Directory
+## Agent Roles
 
-Models are stored in `~/.localchat/models/` by default. Configure via:
+Agents can be assigned roles that define their behavior:
 
-```bash
-localchat config --set models_dir /path/to/models
-```
+| Role | Description |
+|------|-------------|
+| coder | Software engineering and coding |
+| researcher | Research and analysis |
+| writer | Content creation and writing |
+| critic | Review and critique |
+| planner | Planning and strategy |
+| executor | Task execution |
+| generalist | General purpose |
+
+Roles rotate over time in agent mode, giving each agent diverse capabilities.

@@ -1,24 +1,30 @@
 import json
 import os
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 DEFAULT_CONFIG = {
-    "models_dir": str(Path.home() / ".localchat" / "models"),
+    "models_dir": str(Path.home() / ".localprompt" / "models"),
     "temperature": 0.7,
     "top_p": 0.9,
     "top_k": 40,
     "repeat_penalty": 1.1,
-    "context_size": 4096,
-    "n_gpu_layers": 0,
     "n_ctx": 4096,
+    "n_gpu_layers": 0,
     "streaming": True,
-    "history_file": str(Path.home() / ".localchat" / "conversations.json"),
+    "history_file": str(Path.home() / ".localprompt" / "conversations.json"),
+    "memory_file": str(Path.home() / ".localprompt" / "memory.json"),
+    "hive_mem_file": str(Path.home() / ".localprompt" / "hive_mem.json"),
     "default_model": None,
+    "default_provider": None,
+    "agents_dir": str(Path.home() / ".localprompt" / "agents"),
+    "mcp_dir": str(Path.home() / ".localprompt" / "mcp"),
+    "providers": {},
 }
 
 
 def get_config_path():
-    return Path.home() / ".localchat" / "config.json"
+    return Path.home() / ".localprompt" / "config.json"
 
 
 def load_config():
