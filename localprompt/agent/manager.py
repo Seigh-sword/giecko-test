@@ -85,7 +85,7 @@ class AgentManager:
             agent.conversation.append({"role": "assistant", "content": response})
             agent.last_active = time.time()
             agent.total_tasks += 1
-            mem.store(f"last_task", {"message": message, "response": response, "timestamp": time.time()})
+            mem.store("last_task", {"message": message, "response": response, "timestamp": time.time()})
 
         self.hive_mem.sync()
         self._save_agents()

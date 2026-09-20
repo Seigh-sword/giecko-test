@@ -58,7 +58,7 @@ def format_chat(template, system_message, conversation, user_message):
 def detect_template_from_prompt(prompt):
     if "<|im_start|>" in prompt or "<|im_end|>" in prompt:
         return "qwen2"
-    if "[INST]" in prompt and "<</SYS>>>" in prompt:
+    if "[INST]" in prompt and "<</SYS>>" in prompt:
         return "llama2"
     if "<|system|>" in prompt and "<|end|>" in prompt:
         return "chatglm"

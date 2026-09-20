@@ -1,3 +1,6 @@
+import os
+import json
+import re
 import requests
 from typing import Dict, List, Optional
 
@@ -12,7 +15,6 @@ def duckduckgo_search(query: str, max_results: int = 5) -> List[Dict[str, str]]:
         resp = requests.get(url, headers=headers, timeout=15)
         resp.raise_for_status()
         results = []
-        import re
         for match in re.finditer(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', resp.text):
             url = match.group(1)
             title = re.sub(r'<[^>]+>', '', match.group(2))
@@ -31,7 +33,6 @@ def google_search(query: str, api_key: Optional[str] = None, max_results: int = 
     """Search via Google Custom Search API (requires API key)."""
     if not api_key:
         return duckduckgo_search(query, max_results)
-    import json
     cx = os.environ.get("GOOGLE_CX", "")
     url = f"https://www.googleapis.com/customsearch/v1?q={requests.utils.quote(query)}&key={api_key}&cx={cx}"
     try:
@@ -51,11 +52,7 @@ def google_search(query: str, api_key: Optional[str] = None, max_results: int = 
         return []
 
 
-import os
-
-
 def web_search(query: str, provider: str = "duckduckgo", **kwargs) -> List[Dict[str, str]]:
-    """Universal web search."""
     if provider == "duckduckgo":
         return duckduckgo_search(query, kwargs.get("max_results", 5))
     elif provider == "google":

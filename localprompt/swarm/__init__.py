@@ -1,5 +1,6 @@
 import time
 import threading
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from localprompt.model import ModelRunner, GenerationResult
@@ -14,7 +15,7 @@ class SwarmCoordinator:
         self.config = config or {}
         self.models = models
         self.runners: Dict[str, ModelRunner] = {}
-        self.hive_mem = {}
+        self.hive_mem: Dict[str, str] = {}
         self._lock = threading.Lock()
         self._running = False
         self._threads: List[threading.Thread] = []
@@ -25,7 +26,7 @@ class SwarmCoordinator:
             runner = ModelRunner(model_path, self.config)
             try:
                 runner.load()
-                name = ModelRunner.__repr__(runner).split("name=")[-1].split(",")[0] if "name=" in str(runner) else ModelRunner.__repr__(runner).split("(")[-1].split(",")[0] if "(" in str(runner) else Path(model_path).stem
+                name = Path(model_path).stem
                 self.runners[name] = runner
                 console.print(f"[green]Loaded: {name}[/green]")
             except Exception as e:
@@ -47,7 +48,7 @@ class SwarmCoordinator:
         results = {}
         for model_name, roles in specialist_roles.items():
             if model_name in self.runners:
-                prompt = f"You are a {', '.join(roles)}. {question}"
+                prompt = f"You is a {', '.join(roles)}. {question}"
                 result = self.runners[model_name].generate_full(prompt, max_tokens=256)
                 results[model_name] = result.text
         return results

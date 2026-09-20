@@ -1,10 +1,11 @@
 import os
+import json
 import requests
 from pathlib import Path
 from rich.table import Table
 
-from localchat.config import get_models_dir
-from localchat.utils import console, format_file_size
+from localprompt.config import get_models_dir, load_config
+from localprompt.utils import console, format_file_size
 
 
 HF_BASE = "https://huggingface.co"
@@ -16,10 +17,8 @@ POPULAR_MODELS = [
     "TheBloke/Phi-2-GGUF",
     "TheBloke/Gemma-2-9B-It-GGUF",
     "TheBloke/Qwen2-7B-Chat-GGUF",
-    "TheBloke/Meta-Llama-2-7B-Chat-GGUF",
     "bartowski/Llama-2-7B-Chat-GGUF",
     "barisian/Phi-3-mini-4k-GGUF",
-    "UnfilteredAI/Meta-Llama-2-7B-Chat-GGUF",
 ]
 
 
@@ -115,7 +114,6 @@ def list_huggingface_models():
     console.print("[bold]Popular models available on HuggingFace:[/bold]\n")
     table = Table(show_header=True)
     table.add_column("Model", style="green")
-    table.add_column("Description", style="dim")
     table.add_column("Has GGUF", style="yellow")
 
     for model_id in POPULAR_MODELS:
@@ -124,20 +122,12 @@ def list_huggingface_models():
             resp = requests.get(api_url, timeout=10)
             if resp.status_code == 200:
                 data = resp.json()
-                tags = data.get("tags", [])
-                description = data.get("description", "")
                 siblings = data.get("siblings", [])
                 has_gguf = any(s.get("rfilename", "").lower().endswith(".gguf") for s in siblings)
-
-                desc_short = (description[:60] + "...") if len(description) > 60 else description
-                arch = next((t for t in tags if t.startswith("architecture:")), "")
-                if arch:
-                    desc_short = f"{arch.replace('architecture:', '')}: {desc_short}"
-
-                table.add_row(model_id, desc_short, "Yes" if has_gguf else "No")
+                table.add_row(model_id, "Yes" if has_gguf else "No")
             else:
-                table.add_row(model_id, "Unavailable", "?")
+                table.add_row(model_id, "?")
         except Exception:
-            table.add_row(model_id, "Error checking", "?")
+            table.add_row(model_id, "Error")
 
     console.print(table)

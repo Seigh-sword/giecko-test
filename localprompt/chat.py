@@ -1,15 +1,18 @@
 import json
+import os
+import time
 from pathlib import Path
 from datetime import datetime
 from typing import List, Tuple, Optional
 
+from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from localchat.config import load_config, discover_models
-from localchat.model import ModelRunner
-from localchat.templates import get_template, format_chat
-from localchat.utils import console
+from localprompt.config import load_config, discover_models
+from localprompt.model import ModelRunner
+from localprompt.templates import get_template, format_chat
+from localprompt.utils import console
 
 
 class ChatSession:
@@ -24,18 +27,16 @@ class ChatSession:
     def start(self, save_conversation: bool = False, convo_name: Optional[str] = None):
         console.print()
         console.print(Panel.fit(
-            f"[bold cyan]LocalChat[/bold cyan] - Local AI Assistant\n"
+            f"[bold cyan]LocalPrompt[/bold cyan] - Local AI Assistant\n"
             f"Model: [green]{self.model_path}[/green]\n"
-            f"Type [yellow]/help[/yellow] for commands, "
-            f"[yellow]/clear[/yellow] to reset, "
-            f"[yellow]/exit[/yellow] to quit",
+            f"Type [yellow]/help[/yellow] for commands, [yellow]/clear[/yellow] to reset, [yellow]/exit[/yellow] to quit",
             title="Welcome",
             border_style="blue",
         ))
         console.print()
 
         if save_conversation:
-            convo_dir = Path.home() / ".localchat" / "conversations"
+            convo_dir = Path.home() / ".localprompt" / "conversations"
             convo_dir.mkdir(parents=True, exist_ok=True)
             name = convo_name or datetime.now().strftime("%Y%m%d_%H%M%S")
             self.conversation_file = convo_dir / f"{name}.json"
@@ -68,7 +69,7 @@ class ChatSession:
             if not user_input.strip():
                 continue
 
-            if user_input.strip() == "/exit" or user_input.strip() == "/quit":
+            if user_input.strip() in ("/exit", "/quit"):
                 if self.conversation_file:
                     self._save_conversation()
                 console.print("[dim]Goodbye![/dim]")
@@ -126,12 +127,12 @@ class ChatSession:
 
         for chunk in self.runner.generate(formatted_prompt, stream=self.config.get("streaming", True)):
             if start_time is None:
-                start_time = __import__("time").time()
+                start_time = time.time()
             console.print(chunk, end="")
             full_response += chunk
             tokens_output += 1
 
-        elapsed = __import__("time").time() - (start_time or 0)
+        elapsed = time.time() - (start_time or 0)
         console.print()
 
         if elapsed > 0:
@@ -144,10 +145,9 @@ class ChatSession:
             self._save_conversation()
 
     def _switch_model(self, model_path: str):
-        from localchat.model import ModelRunner as MR
         console.print(f"[yellow]Switching model to {model_path}...[/yellow]")
         self.runner.unload()
-        self.runner = MR(model_path, self.config)
+        self.runner = ModelRunner(model_path, self.config)
         self.runner.load()
         self._print_model_info()
 
@@ -196,7 +196,7 @@ class ChatSession:
         console.print(f"[dim]Saved to {self.conversation_file}[/dim]")
 
     def _load_conversation(self, name: str):
-        convo_dir = Path.home() / ".localchat" / "conversations"
+        convo_dir = Path.home() / ".localprompt" / "conversations"
         path = convo_dir / f"{name}.json"
         if not path.exists():
             console.print(f"[red]Conversation '{name}' not found.[/red]")

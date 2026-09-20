@@ -1,6 +1,6 @@
 import curses
 import time
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from localprompt.utils import console
 

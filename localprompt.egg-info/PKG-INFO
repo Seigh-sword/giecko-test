@@ -1,3 +1,23 @@
+Metadata-Version: 2.4
+Name: localprompt
+Version: 0.2.0
+Summary: Local AI assistant with agents, swarm mode, memory, providers, MCP, web search & more
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: llama-cpp-python>=0.3.0
+Requires-Dist: click>=8.0
+Requires-Dist: rich>=13.0
+Requires-Dist: requests>=2.28
+Requires-Dist: httpx>=0.24
+Requires-Dist: numpy>=1.20
+Requires-Dist: diskcache>=5.6
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Provides-Extra: cuda
+Requires-Dist: llama-cpp-python[cuda]>=0.3.0; extra == "cuda"
+
 # localprompt
 
 A comprehensive local AI assistant with agents, swarm intelligence, memory, BYOK providers, MCP tools, web search, reasoning, and more.
@@ -24,33 +44,20 @@ pip install -e .
 ## Quick Start
 
 ```bash
-# Download a model
-localprompt download TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF
-
-# Chat with a model
+# Chat with a local model
 localprompt chat ~/.localprompt/models/*.gguf
 
-# Single prompt mode
-localprompt chat model.gguf -p "Explain quantum computing"
+# Agent mode with a system prompt
+localprompt agent --role coder --model model.gguf
 
-# Agent mode
-localprompt agent model.gguf -r coder -n my_agent -p "Write a sorting function"
-
-# Swarm mode (all models collaborate)
+# Swarm mode - all models collaborate
 localprompt swarm
 
 # Start the TUI
 localprompt tui
 
-# Web search
-localprompt search "AI trends 2026"
-
-# Reasoning
-localprompt reason "What causes inflation?" model.gguf
-
-# BYOK provider
-localprompt providers --set ollama http://localhost:11434
-localprompt chat --provider ollama -p "Hello"
+# Use a BYOK provider
+localprompt chat --provider openai --api-key sk-... -m "Hello"
 ```
 
 ## Commands
