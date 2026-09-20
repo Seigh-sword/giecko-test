@@ -775,14 +775,14 @@ public:
 private:
     // ---- core state --------------------------------------------------------
     Terminal  term;
-    RNG       rng;
+    mutable RNG       rng;
     Dungeon   dungeon;
     Player    player;
 
     std::vector<Monster> monsters;
     std::vector<Item>    groundItems;
 
-    struct Message { std::string text; Color color; };
+    struct Message { std::string text; Color color; bool bold = false; };
     std::vector<Message> messageLog;
 
     int      depth      = 1;
@@ -857,6 +857,7 @@ private:
     void clearMessages();
     void msg(const std::string& s);
     void msg(const std::string& s, Color c);
+    void msg(const std::string& s, Color c, bool bold);
     void msgPlayerHit(const Monster& m, int dmg);
     void msgMonsterHit(const Monster& m, int dmg);
 
@@ -1871,7 +1872,13 @@ void Game::clearMessages() { messageLog.clear(); }
 void Game::msg(const std::string& s) { msg(s, Color::Default); }
 
 void Game::msg(const std::string& s, Color c) {
-    messageLog.push_back({s, c});
+    messageLog.push_back({s, c, false});
+    if ((int)messageLog.size() > 200)
+        messageLog.erase(messageLog.begin(), messageLog.begin() + 100);
+}
+
+void Game::msg(const std::string& s, Color c, bool bold) {
+    messageLog.push_back({s, c, bold});
     if ((int)messageLog.size() > 200)
         messageLog.erase(messageLog.begin(), messageLog.begin() + 100);
 }
@@ -2078,7 +2085,7 @@ void Game::renderMessages() {
         int row = ROW_MSG + i;
         if (idx >= (int)messageLog.size()) break;
         putStr(row, MAP_COL, messageLog[idx].text,
-               messageLog[idx].color, false);
+               messageLog[idx].color, messageLog[idx].bold);
     }
 }
 
@@ -2098,18 +2105,18 @@ void Game::renderInventoryOverlay() {
     if (startCol < 0) startCol = 0;
 
     // Border
-    put(startRow, startCol, '┌', Color::BrightCyan, true);
-    for (int i = 1; i < boxW - 1; ++i) put(startRow, startCol + i, '─',
+    put(startRow, startCol, '+', Color::BrightCyan, true);
+    for (int i = 1; i < boxW - 1; ++i) put(startRow, startCol + i, '-',
                                           Color::BrightCyan, true);
-    put(startRow, startCol + boxW - 1, '┐', Color::BrightCyan, true);
+    put(startRow, startCol + boxW - 1, '+', Color::BrightCyan, true);
     for (int r = 1; r < boxH - 1; ++r) {
-        put(startRow + r, startCol, '│', Color::BrightCyan, true);
-        put(startRow + r, startCol + boxW - 1, '│', Color::BrightCyan, true);
+        put(startRow + r, startCol, '|', Color::BrightCyan, true);
+        put(startRow + r, startCol + boxW - 1, '|', Color::BrightCyan, true);
     }
-    put(startRow + boxH - 1, startCol, '└', Color::BrightCyan, true);
+    put(startRow + boxH - 1, startCol, '+', Color::BrightCyan, true);
     for (int i = 1; i < boxW - 1; ++i)
-        put(startRow + boxH - 1, startCol + i, '─', Color::BrightCyan, true);
-    put(startRow + boxH - 1, startCol + boxW - 1, '┘',
+        put(startRow + boxH - 1, startCol + i, '-', Color::BrightCyan, true);
+    put(startRow + boxH - 1, startCol + boxW - 1, '+',
         Color::BrightCyan, true);
 
     putStr(startRow, startCol + 2, " INVENTORY ", Color::BrightYellow, true);
@@ -2163,18 +2170,18 @@ void Game::renderHelpOverlay() {
         for (int c = 0; c < boxW; ++c)
             put(startRow + r, startCol + c, ' ', Color::Default);
 
-    put(startRow, startCol, '┌', Color::BrightYellow, true);
+    put(startRow, startCol, '+', Color::BrightYellow, true);
     for (int i = 1; i < boxW - 1; ++i)
-        put(startRow, startCol + i, '─', Color::BrightYellow, true);
-    put(startRow, startCol + boxW - 1, '┐', Color::BrightYellow, true);
+        put(startRow, startCol + i, '-', Color::BrightYellow, true);
+    put(startRow, startCol + boxW - 1, '+', Color::BrightYellow, true);
     for (int r = 1; r < boxH - 1; ++r) {
-        put(startRow + r, startCol, '│', Color::BrightYellow, true);
-        put(startRow + r, startCol + boxW - 1, '│', Color::BrightYellow, true);
+        put(startRow + r, startCol, '|', Color::BrightYellow, true);
+        put(startRow + r, startCol + boxW - 1, '|', Color::BrightYellow, true);
     }
-    put(startRow + boxH - 1, startCol, '└', Color::BrightYellow, true);
+    put(startRow + boxH - 1, startCol, '+', Color::BrightYellow, true);
     for (int i = 1; i < boxW - 1; ++i)
-        put(startRow + boxH - 1, startCol + i, '─', Color::BrightYellow, true);
-    put(startRow + boxH - 1, startCol + boxW - 1, '┘', Color::BrightYellow, true);
+        put(startRow + boxH - 1, startCol + i, '-', Color::BrightYellow, true);
+    put(startRow + boxH - 1, startCol + boxW - 1, '+', Color::BrightYellow, true);
 
     int r = startRow + 1;
     int c = startCol + 2;
