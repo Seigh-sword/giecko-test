@@ -1,17 +1,17 @@
-// ============================================================================
-//  SHADOWDEEP
-//  A single-file roguelike dungeon crawler written in C++17.
-//
-//  Compile:  g++ -O2 -std=c++17 -o shadowdeep shadowdeep.cpp
-//  Run:      ./shadowdeep [--seed N]
-//
-//  Controls:
-//    Arrow keys / hjkl / yubn  - Move (into a monster to attack)
-//    g  - pick up item                  i - inventory
-//    q  - quaff a potion                r - read a scroll
-//    >  - descend stairs                z / .  - wait one turn
-//    ?  - help                          Q / Ctrl-D - quit
-// ============================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #include <algorithm>
 #include <array>
@@ -28,29 +28,18 @@
 #include <sstream>
 #include <string>
 #include <vector>
-
 #include <unistd.h>
 #include <termios.h>
 #include <sys/ioctl.h>
 
-// ============================================================================
-// SECTION 1 - CONSTANTS
-// ============================================================================
-
 namespace sd {
-
-// -- Dungeon viewport size ---------------------------------------------------
 constexpr int MAP_W       = 72;
 constexpr int MAP_H       = 22;
-
-// -- Gameplay tuning ---------------------------------------------------------
 constexpr int FOV_RADIUS  = 9;
 constexpr int MAX_DEPTH   = 10;
 constexpr int MSG_LINES   = 4;
 constexpr int INV_MAX     = 22;
 constexpr long long BASE_TURN_ENERGY = 100;
-
-// -- Screen layout -----------------------------------------------------------
 constexpr int MAP_COL      = 2;
 constexpr int ROW_TITLE    = 0;
 constexpr int ROW_STATUS   = 1;
@@ -61,24 +50,16 @@ constexpr int TOTAL_ROWS   = ROW_HINT + 2;
 constexpr int HINT_COL     = 2;
 constexpr int WARN_COLS    = MAP_W + MAP_COL + 4;
 constexpr int WARN_ROWS    = TOTAL_ROWS + 2;
-
-// -- Special key codes (positive so they don't collide with chars) -----------
 constexpr int KEY_UP       = 1001;
 constexpr int KEY_DOWN     = 1002;
 constexpr int KEY_LEFT     = 1003;
 constexpr int KEY_RIGHT    = 1004;
 constexpr int KEY_ESCAPE   = 1005;
 constexpr int KEY_NONE     = -1;
-
-// ============================================================================
-// SECTION 2 - RANDOM NUMBER GENERATION
-// ============================================================================
-
 class RNG {
 public:
     RNG() { engine.seed((uint32_t)std::chrono::steady_clock::now().time_since_epoch().count()); }
     explicit RNG(uint32_t seed) { engine.seed(seed); }
-
     int  range(int lo, int hi) {
         if (hi < lo) std::swap(lo, hi);
         std::uniform_int_distribution<int> d(lo, hi);
@@ -89,33 +70,22 @@ public:
     bool chance(int percent) { return range(1, 100) <= percent; }
     bool flip()              { return range(0,1) == 1; }
     uint32_t seedValue()     { return (uint32_t)engine(); }
-
     template<class T>
     const T& pick(const std::vector<T>& v) {
         return v[range(0, (int)v.size() - 1)];
     }
-
 private:
     std::mt19937 engine;
 };
-
-// ============================================================================
-// SECTION 3 - TERMINAL CONTROL
-// ============================================================================
-
 class Terminal {
 public:
     Terminal()  = default;
     ~Terminal() { restore(); }
-
     Terminal(const Terminal&) = delete;
     Terminal& operator=(const Terminal&) = delete;
-
-    // Enter "raw" mode: no echo, no line buffering, no signals.
     void enterRaw() {
         if (raw) return;
         if (!isatty(STDIN_FILENO)) return;
-
         if (tcgetattr(STDIN_FILENO, &orig) != 0) return;
         struct termios t = orig;
         t.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
@@ -125,12 +95,9 @@ public:
         t.c_cc[VTIME] = 0;
         tcsetattr(STDIN_FILENO, TCSAFLUSH, &t);
         raw = true;
-
-        // Hide cursor, clear screen, disable line wrap interactions.
         std::fputs("\033[?25l\033[2J", stdout);
         std::fflush(stdout);
     }
-
     void restore() {
         if (raw) {
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig);
@@ -139,19 +106,12 @@ public:
         std::fputs("\033[?25h\033[0m\033[2J\033[H", stdout);
         std::fflush(stdout);
     }
-
-    // Non-blocking read. Returns KEY_NONE if nothing available.
     int pollKey() {
         unsigned char c;
         if (read(STDIN_FILENO, &c, 1) != 1) return KEY_NONE;
-
         if (c != 27) return (int)c;
-
-        // Possible escape sequence. Give the terminal a moment to deliver
-        // the rest of the bytes.
         struct timespec ts{0, 15 * 1000 * 1000};
         nanosleep(&ts, nullptr);
-
         unsigned char buf[2];
         int n = (int)read(STDIN_FILENO, buf, 2);
         if (n >= 1 && buf[0] == '[') {
@@ -168,8 +128,6 @@ public:
         }
         return KEY_ESCAPE;
     }
-
-    // Blocking read (used for menu screens).
     int waitKey() {
         for (;;) {
             int k = pollKey();
@@ -178,32 +136,24 @@ public:
             nanosleep(&ts, nullptr);
         }
     }
-
     bool sizeOk() const {
         struct winsize ws;
         if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) != 0) return true;
         return ws.ws_col >= WARN_COLS && ws.ws_row >= WARN_ROWS;
     }
-
 private:
     struct termios orig{};
     bool raw = false;
 };
-
-// ============================================================================
-// SECTION 4 - COLORS
-// ============================================================================
-
 enum class Color : int {
     Default,
     Black, Red, Green, Yellow, Blue, Magenta, Cyan, White,
-    Gray,   // bright black
+    Gray,   
     BrightRed, BrightGreen, BrightYellow,
     BrightBlue, BrightMagenta, BrightCyan, BrightWhite,
     DarkRed, DarkGreen, DarkYellow, DarkBlue,
     Brown, Olive, Gold, Crimson, Steel
 };
-
 inline const char* colorCode(Color c) {
     switch (c) {
         case Color::Default:       return "\033[39m";
@@ -235,31 +185,22 @@ inline const char* colorCode(Color c) {
     }
     return "\033[0m";
 }
-
 inline const char* RESET() { return "\033[0m"; }
 inline const char* BOLD()  { return "\033[1m"; }
 inline const char* DIM()   { return "\033[2m"; }
-
-// ============================================================================
-// SECTION 5 - BASIC GEOMETRY
-// ============================================================================
-
 struct Vec2 {
     int x = 0, y = 0;
     Vec2() = default;
     Vec2(int x_, int y_) : x(x_), y(y_) {}
-
     Vec2  operator+(const Vec2& o) const { return {x + o.x, y + o.y}; }
     Vec2  operator-(const Vec2& o) const { return {x - o.x, y - o.y}; }
     Vec2  operator*(int k)         const { return {x * k, y * k}; }
     Vec2& operator+=(const Vec2& o)      { x += o.x; y += o.y; return *this; }
-
     bool operator==(const Vec2& o) const { return x == o.x && y == o.y; }
     bool operator!=(const Vec2& o) const { return !(*this == o); }
     bool operator< (const Vec2& o) const {
         return y != o.y ? y < o.y : x < o.x;
     }
-
     int chebyshev(const Vec2& o) const {
         return std::max(std::abs(x - o.x), std::abs(y - o.y));
     }
@@ -272,19 +213,12 @@ struct Vec2 {
         return { (x > 0) - (x < 0), (y > 0) - (y < 0) };
     }
 };
-
 const Vec2 DIRS8[8] = {
     {-1,-1}, { 0,-1}, { 1,-1},
     {-1, 0},          { 1, 0},
     {-1, 1}, { 0, 1}, { 1, 1}
 };
-
 const Vec2 DIRS4[4] = { { 0,-1}, { 1, 0}, { 0, 1}, {-1, 0} };
-
-// ============================================================================
-// SECTION 6 - TILES, RECT, DUNGEON
-// ============================================================================
-
 enum class Tile : uint8_t {
     Wall,
     Floor,
@@ -294,14 +228,11 @@ enum class Tile : uint8_t {
     StairsUp,
     Rubble
 };
-
 struct Rect {
     int x = 0, y = 0, w = 0, h = 0;
-
     int  centerX() const { return x + w / 2; }
     int  centerY() const { return y + h / 2; }
     Vec2 center()  const { return { x + w / 2, y + h / 2 }; }
-
     bool contains(Vec2 p) const {
         return p.x >= x && p.x < x + w && p.y >= y && p.y < y + h;
     }
@@ -312,24 +243,17 @@ struct Rect {
                  o.y + o.h + pad <= y);
     }
 };
-
-// ---------------------------------------------------------------------------
-// The map: static geometry here, dynamic entities live in the Game class.
-// ---------------------------------------------------------------------------
 class Dungeon {
 public:
     Tile tiles[MAP_H][MAP_W];
     bool explored[MAP_H][MAP_W];
     bool visible [MAP_H][MAP_W];
-
     std::vector<Rect> rooms;
     Vec2 startPos{-1, -1};
     Vec2 stairsDownPos{-1, -1};
     Vec2 stairsUpPos{-1, -1};
     int  depth = 1;
-
     Dungeon() { clear(); }
-
     void clear() {
         for (int y = 0; y < MAP_H; ++y) {
             for (int x = 0; x < MAP_W; ++x) {
@@ -353,7 +277,7 @@ public:
     void set(int x, int y, Tile t) { tiles[y][x] = t; }
     void set(Vec2 p, Tile t)       { tiles[p.y][p.x] = t; }
 
-    // Hard walls block sight. Doors block sight but not movement.
+    
     bool blocksSight(int x, int y) const {
         Tile t = tiles[y][x];
         return t == Tile::Wall || t == Tile::Rubble;
@@ -368,7 +292,7 @@ public:
     bool isWalkable(int x, int y) const { return !blocksMove(x, y); }
     bool isWalkable(Vec2 p)       const { return !blocksMove(p); }
 
-    // ---- generation --------------------------------------------------------
+    
     void generate(int d, RNG& rng);
     void computeFOV(Vec2 origin);
 
@@ -380,7 +304,7 @@ private:
     void placeDoors(RNG& rng);
 };
 
-// ---------------------------------------------------------------------------
+
 void Dungeon::carveH(int x1, int x2, int y) {
     if (x1 > x2) std::swap(x1, x2);
     for (int x = x1; x <= x2; ++x)
@@ -395,7 +319,7 @@ void Dungeon::carveV(int y1, int y2, int x) {
             tiles[y][x] = Tile::Corridor;
 }
 
-// ---------------------------------------------------------------------------
+
 void Dungeon::connectRooms(Rect& a, Rect& b, RNG& rng) {
     Vec2 p = a.center();
     Vec2 q = b.center();
@@ -410,10 +334,10 @@ void Dungeon::connectRooms(Rect& a, Rect& b, RNG& rng) {
     }
 }
 
-// ---------------------------------------------------------------------------
+
 void Dungeon::placeDoors(RNG& rng) {
-    // A door is a corridor cell that has exactly two opposite corridor
-    // neighbours, and at least one adjacent "floor" cell (a room).
+    
+    
     for (int y = 1; y < MAP_H - 1; ++y) {
         for (int x = 1; x < MAP_W - 1; ++x) {
             if (tiles[y][x] != Tile::Corridor) continue;
@@ -440,12 +364,12 @@ void Dungeon::placeDoors(RNG& rng) {
     }
 }
 
-// ---------------------------------------------------------------------------
+
 void Dungeon::generate(int d, RNG& rng) {
     clear();
     depth = d;
 
-    // --- Room selection -----------------------------------------------------
+    
     int targetRooms = 9 + rng.range(0, 6) + depth / 3;
     int maxAttempts = targetRooms * 25;
 
@@ -466,14 +390,14 @@ void Dungeon::generate(int d, RNG& rng) {
         if (ok) rooms.push_back(candidate);
     }
 
-    // --- Carve the rooms ----------------------------------------------------
+    
     for (auto& r : rooms) {
         for (int y = r.y; y < r.y + r.h; ++y)
             for (int x = r.x; x < r.x + r.w; ++x)
                 tiles[y][x] = Tile::Floor;
     }
 
-    // --- Connect rooms (chain + a few extras for loops) ---------------------
+    
     for (size_t i = 1; i < rooms.size(); ++i)
         connectRooms(rooms[i - 1], rooms[i], rng);
 
@@ -485,7 +409,7 @@ void Dungeon::generate(int d, RNG& rng) {
         connectRooms(rooms[i], rooms[j], rng);
     }
 
-    // --- Corridor rubble for flavour ----------------------------------------
+    
     int rubbleCount = rng.range(3, 8);
     for (int i = 0; i < rubbleCount; ++i) {
         int x = rng.range(1, MAP_W - 2);
@@ -494,12 +418,12 @@ void Dungeon::generate(int d, RNG& rng) {
             if (rng.chance(30)) tiles[y][x] = Tile::Rubble;
     }
 
-    // --- Doors --------------------------------------------------------------
+    
     placeDoors(rng);
 
-    // --- Stairs -------------------------------------------------------------
+    
     if (rooms.empty()) {
-        // Fallback: a small open space so the game doesn't crash.
+        
         Rect r{2, 2, 8, 6};
         rooms.push_back(r);
         for (int y = r.y; y < r.y + r.h; ++y)
@@ -511,7 +435,7 @@ void Dungeon::generate(int d, RNG& rng) {
     stairsUpPos = startPos;
     stairsDownPos = rooms.back().center();
 
-    // Make sure start != stairs down
+    
     if (rooms.size() == 1) stairsDownPos = { startPos.x + 1, startPos.y };
 
     set(startPos, Tile::Floor);
@@ -521,9 +445,9 @@ void Dungeon::generate(int d, RNG& rng) {
     computeFOV(startPos);
 }
 
-// ---------------------------------------------------------------------------
-// Bresenham-based per-cell visibility. Simple and accurate enough.
-// ---------------------------------------------------------------------------
+
+
+
 void Dungeon::raycast(Vec2 from, Vec2 to) {
     int x0 = from.x, y0 = from.y;
     int x1 = to.x,   y1 = to.y;
@@ -544,7 +468,7 @@ void Dungeon::raycast(Vec2 from, Vec2 to) {
         }
         if (x == x1 && y == y1) break;
 
-        // Stop the ray on a sight-blocking tile (but mark it as seen first).
+        
         if (!first && inBounds(x, y) && blocksSight(x, y)) break;
         first = false;
 
@@ -573,9 +497,9 @@ void Dungeon::computeFOV(Vec2 origin) {
     }
 }
 
-// ============================================================================
-// SECTION 7 - ITEM DEFINITIONS
-// ============================================================================
+
+
+
 
 enum class ItemKind {
     None,
@@ -601,51 +525,51 @@ struct ItemDef {
     Color       color;
     int         minDepth;
     int         maxDepth;
-    int         power;      // weapon damage / armor def / heal / gold hint
-    bool        identified; // always true – we pick "flavours" from the depth
+    int         power;      
+    bool        identified; 
 };
 
 static const ItemDef ITEM_DEFS[] = {
-    // Potions
+    
     { ItemKind::PotionHeal,       "healing potion",         '!', Color::BrightRed,     0, 10,  18, true },
     { ItemKind::PotionStrength,   "potion of strength",     '!', Color::BrightMagenta, 3, 10,   1, true },
     { ItemKind::PotionSpeed,      "potion of haste",        '!', Color::BrightCyan,    4, 10,  60, true },
     { ItemKind::PotionRejuvenate, "potion of rejuvenation", '!', Color::BrightYellow,  6, 10, 100, true },
-    // Weapons
+    
     { ItemKind::Weapon,           "dagger",                 '/', Color::Steel,         0,  4,   2, true },
     { ItemKind::Weapon,           "short sword",            '/', Color::Steel,         2, 10,   4, true },
     { ItemKind::Weapon,           "battle axe",             '/', Color::Steel,         4, 10,   6, true },
     { ItemKind::Weapon,           "runed greatsword",       '/', Color::BrightCyan,    6, 10,   9, true },
-    // Armor
+    
     { ItemKind::Armor,            "leather armour",         '[', Color::Brown,         0,  4,   1, true },
     { ItemKind::Armor,            "chain mail",             '[', Color::Steel,         3, 10,   3, true },
     { ItemKind::Armor,            "plate armour",           '[', Color::BrightWhite,   5, 10,   5, true },
     { ItemKind::Armor,            "dragon scale mail",      '[', Color::BrightRed,     7, 10,   8, true },
-    // Gold – the value is rolled when spawned.
+    
     { ItemKind::Gold,             "pile of gold",           '$', Color::Gold,          0, 10,   0, true },
-    // Food
+    
     { ItemKind::Food,             "ration of food",         '%', Color::Brown,         0, 10,   8, true },
-    // Scrolls
+    
     { ItemKind::ScrollLightning,  "scroll of lightning",    '?', Color::BrightYellow,  1, 10,  18, true },
     { ItemKind::ScrollFireball,   "scroll of fireball",     '?', Color::BrightRed,     3, 10,  30, true },
     { ItemKind::ScrollTeleport,   "scroll of teleport",     '?', Color::BrightMagenta, 2, 10,   0, true },
     { ItemKind::ScrollMagicMap,   "scroll of magic mapping",'?', Color::BrightCyan,    2, 10,   0, true },
-    // The Amulet – the win condition.
+    
     { ItemKind::Amulet,           "Amulet of Shadowdeep",   '"', Color::Gold,         10, 10,   0, true },
 };
 
 constexpr int NUM_ITEM_DEFS = sizeof(ITEM_DEFS) / sizeof(ITEM_DEFS[0]);
 
-// ============================================================================
-// SECTION 8 - MONSTER DEFINITIONS
-// ============================================================================
+
+
+
 
 struct MonsterDef {
     const char* name;
     char        glyph;
     Color       color;
     int         hpBase;
-    int         hpRoll;    // hp = hpBase + rng.range(0,hpRoll)
+    int         hpRoll;    
     int         atk;
     int         def;
     int         xp;
@@ -653,8 +577,8 @@ struct MonsterDef {
     int         maxDepth;
     const char* attackVerb;
     const char* deathMsg;
-    int         speed;     // energy per turn; 100 = average
-    bool        erratic;   // moves randomly instead of pursuing
+    int         speed;     
+    bool        erratic;   
 };
 
 static const MonsterDef MONSTER_DEFS[] = {
@@ -671,22 +595,22 @@ static const MonsterDef MONSTER_DEFS[] = {
     { "vampire",         'V', Color::BrightRed,    46,  10, 12,  5,  85,  6, 10,"bites",         "The vampire recoils and melts.", 110, false },
     { "troll",           'T', Color::DarkGreen,    65,  15, 14,  7, 110,  7, 10,"rends",         "The troll slumps, defeated.",     80, false },
     { "demon",           'd', Color::BrightRed,    80,  15, 17,  9, 160,  8, 10,"claws",         "The demon is banished!",         100, false },
-    // The final boss.
+    
     { "ancient dragon",  'D', Color::BrightYellow,240,  40, 26, 13, 800, 10, 10,"incinerates",   "The dragon crashes down dead!",   90, false },
 };
 
 constexpr int NUM_MONSTER_DEFS = sizeof(MONSTER_DEFS) / sizeof(MONSTER_DEFS[0]);
 
-// ============================================================================
-// SECTION 9 - ENTITIES
-// ============================================================================
+
+
+
 
 struct Item {
     ItemKind    kind   = ItemKind::None;
     std::string name;
     char        glyph  = '?';
     Color       color  = Color::Default;
-    int         power  = 0;      // weapon dmg / armour def / heal amount / gold charge
+    int         power  = 0;      
     Vec2        pos;
 };
 
@@ -716,16 +640,16 @@ struct Player {
     int  maxHp      = 30;
     int  baseAtk    = 4;
     int  baseDef    = 0;
-    int  strength   = 0;   // bonus from PotionStrength
+    int  strength   = 0;   
     int  level      = 1;
     int  xp         = 0;
     int  xpNext     = 15;
     int  gold       = 0;
-    int  energy     = 0;   // for haste
+    int  energy     = 0;   
     int  speed      = 100;
     long long turns = 0;
 
-    // Equipment – kept separate from the inventory vector.
+    
     std::string weaponName = "bare fists";
     int         weaponPower = 0;
     std::string armorName  = "no armour";
@@ -733,7 +657,7 @@ struct Player {
 
     bool hasAmulet = false;
 
-    // The pack.
+    
     std::vector<Item> inventory;
 
     int attackPower()  const { return baseAtk + weaponPower + strength; }
@@ -753,9 +677,9 @@ struct Player {
     }
 };
 
-// ============================================================================
-// SECTION 10 - SCREEN CELL & RENDER BUFFER
-// ============================================================================
+
+
+
 
 struct Cell {
     char  ch   = ' ';
@@ -763,9 +687,9 @@ struct Cell {
     bool  bold = false;
 };
 
-// ============================================================================
-// SECTION 11 - THE GAME
-// ============================================================================
+
+
+
 
 class Game {
 public:
@@ -773,7 +697,7 @@ public:
     int  run(int argc, char** argv);
 
 private:
-    // ---- core state --------------------------------------------------------
+    
     Terminal  term;
     mutable RNG       rng;
     Dungeon   dungeon;
@@ -793,26 +717,26 @@ private:
     long long totalGoldEarned    = 0;
     long long startTimeMs        = 0;
 
-    // ---- render buffer -----------------------------------------------------
+    
     Cell screen[TOTAL_ROWS][MAP_W + 2 * MAP_COL + 4];
 
-    // ---- menu state --------------------------------------------------------
+    
     bool showingHelp      = false;
     bool showingInventory = false;
     int  invCursor        = 0;
     std::string pendingMenuMessage;
 
-    // ---- lifecycle ---------------------------------------------------------
+    
     void startNewGame();
     void newLevel(int newDepth);
     void mainLoop();
 
-    // ---- turns -------------------------------------------------------------
+    
     bool processPlayerAction();
     void endPlayerTurn();
     void takeMonsterTurns();
 
-    // ---- player actions ----------------------------------------------------
+    
     bool movePlayer(int dx, int dy);
     void waitTurn();
     void tryPickup();
@@ -822,14 +746,14 @@ private:
     void dropItemFromInventory(int idx);
     bool useInventoryItem(int idx);
 
-    // ---- combat ------------------------------------------------------------
+    
     void playerAttack(Monster& m);
     void monsterAttack(Monster& m);
     void killMonster(Monster& m);
     void damagePlayer(int dmg, Monster* source);
     void healPlayer(int amount);
 
-    // ---- monster AI --------------------------------------------------------
+    
     Monster makeMonster(int defIndex, Vec2 pos);
     void    spawnMonsters();
     void    updateMonster(Monster& m);
@@ -837,14 +761,14 @@ private:
     bool    monsterMoveStep(Monster& m, Vec2 target);
     void    monsterWander(Monster& m);
 
-    // ---- items -------------------------------------------------------------
+    
     Item makeItem(const ItemDef& def, Vec2 pos);
     Item randomItemForDepth(int d, Vec2 pos);
     Item amuletItem(Vec2 pos);
     void spawnItems();
     void pickupItemAt(Vec2 pos);
 
-    // ---- helpers -----------------------------------------------------------
+    
     bool     tileOccupied(Vec2 p) const;
     Monster* monsterAt(Vec2 p);
     Item*    groundItemAt(Vec2 p);
@@ -853,7 +777,7 @@ private:
     bool     adjacent(Vec2 a, Vec2 b) const;
     int      rollWeaponDamage() const;
 
-    // ---- messages ----------------------------------------------------------
+    
     void clearMessages();
     void msg(const std::string& s);
     void msg(const std::string& s, Color c);
@@ -861,7 +785,7 @@ private:
     void msgPlayerHit(const Monster& m, int dmg);
     void msgMonsterHit(const Monster& m, int dmg);
 
-    // ---- rendering ---------------------------------------------------------
+    
     void render();
     void clearScreenBuffer();
     void blit();
@@ -877,29 +801,29 @@ private:
     void renderHelpOverlay();
     void renderGameOverOverlay();
 
-    // ---- menus -------------------------------------------------------------
+    
     void runHelpScreen();
     void runInventoryScreen();
     void runDeathScreen();
     void runWinScreen();
 
-    // ---- misc --------------------------------------------------------------
+    
     void  sleepMs(int ms);
     long long nowMs() const;
     std::string formatTime(long long ms) const;
     void  bannerText();
 };
 
-// ---------------------------------------------------------------------------
-//  Game::Game
-// ---------------------------------------------------------------------------
+
+
+
 Game::Game() {
     clearScreenBuffer();
 }
 
-// ---------------------------------------------------------------------------
-//  Timing helpers
-// ---------------------------------------------------------------------------
+
+
+
 long long Game::nowMs() const {
     return (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -921,9 +845,9 @@ std::string Game::formatTime(long long ms) const {
     return buf;
 }
 
-// ---------------------------------------------------------------------------
-//  Game::run
-// ---------------------------------------------------------------------------
+
+
+
 int Game::run(int argc, char** argv) {
     uint32_t seed = 0;
     for (int i = 1; i < argc; ++i) {
@@ -957,9 +881,9 @@ int Game::run(int argc, char** argv) {
     return 0;
 }
 
-// ---------------------------------------------------------------------------
-//  Banner
-// ---------------------------------------------------------------------------
+
+
+
 void Game::bannerText() {
     term.enterRaw();
     std::fputs("\033[2J\033[H", stdout);
@@ -987,9 +911,9 @@ void Game::bannerText() {
     term.waitKey();
 }
 
-// ---------------------------------------------------------------------------
-//  startNewGame - initialise everything for a fresh run.
-// ---------------------------------------------------------------------------
+
+
+
 void Game::startNewGame() {
     player = Player{};
     monsters.clear();
@@ -1002,8 +926,8 @@ void Game::startNewGame() {
     startTimeMs = nowMs();
     clearMessages();
 
-    // Starter kit.
-    Item dagger = makeItem(ITEM_DEFS[4], player.pos);   // dagger
+    
+    Item dagger = makeItem(ITEM_DEFS[4], player.pos);   
     dagger.name = "dagger";
     dagger.kind = ItemKind::Weapon;
     dagger.power = 2;
@@ -1021,9 +945,9 @@ void Game::startNewGame() {
     msg("Find the Amulet on level 10 and escape.", Color::BrightYellow);
 }
 
-// ---------------------------------------------------------------------------
-//  newLevel - generate fresh dungeon, place player/monsters/items.
-// ---------------------------------------------------------------------------
+
+
+
 void Game::newLevel(int newDepth) {
     depth = newDepth;
     dungeon.generate(depth, rng);
@@ -1038,11 +962,11 @@ void Game::newLevel(int newDepth) {
     spawnItems();
 }
 
-// ---------------------------------------------------------------------------
-//  MAIN LOOP
-// ---------------------------------------------------------------------------
+
+
+
 void Game::mainLoop() {
-    // Keep the terminal responsive but don't burn CPU.
+    
     while (running && !playerDead && !playerWon) {
         render();
 
@@ -1052,25 +976,25 @@ void Game::mainLoop() {
             continue;
         }
 
-        // ---- quit ---------------------------------------------------------
-        if (k == 'Q' || k == 4 /* Ctrl-D */) {
+        
+        if (k == 'Q' || k == 4 ) {
             running = false;
             break;
         }
 
-        // ---- help overlay -------------------------------------------------
+        
         if (k == '?') {
             runHelpScreen();
             continue;
         }
 
-        // ---- inventory overlay --------------------------------------------
+        
         if (k == 'i' || k == 'I') {
             runInventoryScreen();
             continue;
         }
 
-        // ---- movement & actions -------------------------------------------
+        
         bool tookTurn = false;
         switch (k) {
             case KEY_UP:    case 'k': tookTurn = movePlayer( 0, -1); break;
@@ -1087,7 +1011,7 @@ void Game::mainLoop() {
             case 'z': case '.': waitTurn();    tookTurn = true;  break;
 
             case 'q': {
-                // Quaff the first potion found in the pack.
+                
                 for (size_t i = 0; i < player.inventory.size(); ++i) {
                     auto kd = player.inventory[i].kind;
                     if (kd == ItemKind::PotionHeal ||
@@ -1127,9 +1051,9 @@ void Game::mainLoop() {
     }
 }
 
-// ---------------------------------------------------------------------------
-//  Turn bookkeeping
-// ---------------------------------------------------------------------------
+
+
+
 void Game::endPlayerTurn() {
     player.turns++;
     dungeon.computeFOV(player.pos);
@@ -1139,7 +1063,7 @@ void Game::endPlayerTurn() {
     }
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::takeMonsterTurns() {
     for (auto& m : monsters) {
         if (!m.alive) continue;
@@ -1151,15 +1075,15 @@ void Game::takeMonsterTurns() {
     }
 }
 
-// ---------------------------------------------------------------------------
-//  Player movement / attack
-// ---------------------------------------------------------------------------
+
+
+
 bool Game::movePlayer(int dx, int dy) {
     Vec2 target = player.pos + Vec2(dx, dy);
 
     if (!dungeon.inBounds(target)) return false;
 
-    // Attack any monster occupying the target square.
+    
     Monster* m = monsterAt(target);
     if (m) {
         playerAttack(*m);
@@ -1167,16 +1091,16 @@ bool Game::movePlayer(int dx, int dy) {
     }
 
     if (dungeon.blocksMove(target)) {
-        // Bumping a wall is not a turn.
+        
         return false;
     }
 
-    // Rubble is passable but slows movement: 50% chance of an extra wait.
+    
     bool rubbleSlow = (dungeon.at(target) == Tile::Rubble) && rng.chance(50);
 
     player.pos = target;
 
-    // Auto-pickup gold.
+    
     for (auto& item : groundItems) {
         if (item.kind == ItemKind::Gold && item.pos == player.pos) {
             player.gold += item.power;
@@ -1184,7 +1108,7 @@ bool Game::movePlayer(int dx, int dy) {
             std::ostringstream ss;
             ss << "You pick up " << item.power << " gold.";
             msg(ss.str(), Color::Gold);
-            item.kind = ItemKind::None; // mark for removal
+            item.kind = ItemKind::None; 
         }
     }
     groundItems.erase(
@@ -1200,7 +1124,7 @@ bool Game::movePlayer(int dx, int dy) {
 }
 
 void Game::waitTurn() {
-    // Doing nothing. Recover a tiny bit of hp if very weak.
+    
     if (player.hp < player.maxHp && rng.chance(15))
         healPlayer(1);
 }
@@ -1254,16 +1178,16 @@ void Game::descendStairs() {
     msg(ss.str(), Color::BrightYellow);
     if (depth == MAX_DEPTH)
         msg("A vast heat washes over you. Something enormous stirs nearby...",
-            Color::BrightRed, /*bold*/ true);
+            Color::BrightRed,  true);
 }
 
-// ---------------------------------------------------------------------------
-//  Player combat
-// ---------------------------------------------------------------------------
+
+
+
 int Game::rollWeaponDamage() const {
     int base = player.attackPower();
     int dmg  = rng.range(std::max(1, base - 1), base + 2);
-    if (rng.chance(15)) dmg *= 2; // critical hit
+    if (rng.chance(15)) dmg *= 2; 
     return dmg;
 }
 
@@ -1299,7 +1223,7 @@ void Game::killMonster(Monster& m) {
         msg(ss.str(), Color::BrightYellow);
     }
 
-    // Occasionally drop loot.
+    
     int dropChance = 20;
     if (m.boss) dropChance = 100;
     if (rng.chance(dropChance)) {
@@ -1315,7 +1239,7 @@ void Game::killMonster(Monster& m) {
 }
 
 void Game::monsterAttack(Monster& m) {
-    // Player defense reduces incoming damage. There is always at least 1.
+    
     int dmg = rng.range(1, m.atk) - player.defensePower();
     if (dmg < 1) dmg = 1;
 
@@ -1344,9 +1268,9 @@ void Game::healPlayer(int amount) {
     if (player.hp > player.maxHp) player.hp = player.maxHp;
 }
 
-// ---------------------------------------------------------------------------
-//  Monster construction
-// ---------------------------------------------------------------------------
+
+
+
 Monster Game::makeMonster(int defIndex, Vec2 pos) {
     const MonsterDef& d = MONSTER_DEFS[defIndex];
     Monster m;
@@ -1376,7 +1300,7 @@ void Game::spawnMonsters() {
     for (int i = 0; i < NUM_MONSTER_DEFS; ++i) {
         const auto& d = MONSTER_DEFS[i];
         if (depth >= d.minDepth && depth <= d.maxDepth) {
-            // The dragon only appears on level 10 and only once.
+            
             if (d.minDepth == 10 && d.maxDepth == 10) {
                 if (depth == MAX_DEPTH) eligible.push_back(i);
             } else {
@@ -1386,9 +1310,9 @@ void Game::spawnMonsters() {
     }
     if (eligible.empty()) return;
 
-    // Weight selection toward lower-tier monsters at shallow depths.
+    
     auto chooseDef = [&]() -> int {
-        // Just pick uniformly from eligible; simple and OK.
+        
         return eligible[rng.range(0, (int)eligible.size() - 1)];
     };
 
@@ -1396,7 +1320,7 @@ void Game::spawnMonsters() {
 
     for (int i = 0; i < maxIter && placed < baseCount; ++i) {
         Vec2 p = randomFloorCell(rng);
-        if (p.manhattan(dungeon.startPos) < 8) continue;   // give player room
+        if (p.manhattan(dungeon.startPos) < 8) continue;   
         if (tileOccupied(p)) continue;
 
         int defIdx = chooseDef();
@@ -1410,12 +1334,12 @@ void Game::spawnMonsters() {
         placed++;
     }
 
-    // Last level: always ensure the dragon shows up.
+    
     if (depth == MAX_DEPTH && !bossSpawned) {
         for (int i = 0; i < NUM_MONSTER_DEFS; ++i) {
             if (std::strcmp(MONSTER_DEFS[i].name, "ancient dragon") == 0) {
                 Vec2 p = dungeon.stairsDownPos;
-                // Any free cell close to stairs.
+                
                 for (auto& d : DIRS8) {
                     Vec2 q = p + d;
                     if (dungeon.inBounds(q) && dungeon.isWalkable(q) &&
@@ -1430,13 +1354,13 @@ void Game::spawnMonsters() {
     }
 }
 
-// ---------------------------------------------------------------------------
-//  Monster AI
-// ---------------------------------------------------------------------------
+
+
+
 bool Game::monsterSeesPlayer(const Monster& m) const {
     if (m.pos.manhattan(player.pos) > 12) return false;
 
-    // Bresenham (copy of Dungeon::raycast, but with the Dungeon visible-by-side)
+    
     int x0 = m.pos.x, y0 = m.pos.y;
     int x1 = player.pos.x, y1 = player.pos.y;
     int dx = std::abs(x1 - x0);
@@ -1457,7 +1381,7 @@ bool Game::monsterSeesPlayer(const Monster& m) const {
 }
 
 bool Game::monsterMoveStep(Monster& m, Vec2 target) {
-    // Greedy: pick the adjacent free square closest to the target.
+    
     Vec2 best = m.pos;
     int  bestDist = m.pos.manhattan(target);
 
@@ -1465,7 +1389,7 @@ bool Game::monsterMoveStep(Monster& m, Vec2 target) {
         Vec2 p = m.pos + d;
         if (!dungeon.inBounds(p)) continue;
         if (dungeon.blocksMove(p)) continue;
-        if (p == player.pos) continue;             // can't walk into the player
+        if (p == player.pos) continue;             
         if (tileOccupied(p)) continue;
         int dist = p.manhattan(target);
         if (dist < bestDist) {
@@ -1494,7 +1418,7 @@ void Game::monsterWander(Monster& m) {
 void Game::updateMonster(Monster& m) {
     if (!m.alive) return;
 
-    // Awareness check.
+    
     if (!m.aware && monsterSeesPlayer(m)) {
         m.aware = true;
         std::ostringstream ss;
@@ -1502,28 +1426,28 @@ void Game::updateMonster(Monster& m) {
         msg(ss.str(), Color::Yellow);
     }
 
-    // If adjacent, attack.
+    
     if (adjacent(m.pos, player.pos)) {
         monsterAttack(m);
         return;
     }
 
-    // Otherwise pursue or wander.
+    
     if (m.aware && !m.erratic) {
         monsterMoveStep(m, player.pos);
     } else if (m.erratic) {
-        // Bats: 50 % chance move toward player, else random.
+        
         if (m.aware && rng.chance(50)) monsterMoveStep(m, player.pos);
         else                            monsterWander(m);
     } else {
-        // Unaware – occasional random shuffle.
+        
         if (rng.chance(25)) monsterWander(m);
     }
 }
 
-// ---------------------------------------------------------------------------
-//  Items
-// ---------------------------------------------------------------------------
+
+
+
 Item Game::makeItem(const ItemDef& def, Vec2 pos) {
     Item it;
     it.kind  = def.kind;
@@ -1533,7 +1457,7 @@ Item Game::makeItem(const ItemDef& def, Vec2 pos) {
     it.power = def.power;
     it.pos   = pos;
 
-    // Scale some things by depth.
+    
     if (def.kind == ItemKind::Gold)
         it.power = rng.range(4, 8 + depth * 3);
 
@@ -1552,7 +1476,7 @@ Item Game::amuletItem(Vec2 pos) {
 }
 
 Item Game::randomItemForDepth(int d, Vec2 pos) {
-    // Roll a category first.
+    
     int roll = rng.range(1, 100);
     ItemKind want;
 
@@ -1569,7 +1493,7 @@ Item Game::randomItemForDepth(int d, Vec2 pos) {
     else if (roll <= 97) want = ItemKind::ScrollMagicMap;
     else                 want = ItemKind::Gold;
 
-    // Gather matching defs whose depth window includes d.
+    
     std::vector<int> matches;
     for (int i = 0; i < NUM_ITEM_DEFS; ++i) {
         const auto& def = ITEM_DEFS[i];
@@ -1578,7 +1502,7 @@ Item Game::randomItemForDepth(int d, Vec2 pos) {
         matches.push_back(i);
     }
     if (matches.empty()) {
-        // Fall back to a healing potion.
+        
         for (int i = 0; i < NUM_ITEM_DEFS; ++i)
             if (ITEM_DEFS[i].kind == ItemKind::PotionHeal)
                 return makeItem(ITEM_DEFS[i], pos);
@@ -1598,10 +1522,10 @@ void Game::spawnItems() {
         groundItems.push_back(it);
     }
 
-    // On the deepest level, place the Amulet.
+    
     if (depth == MAX_DEPTH && !player.hasAmulet) {
         Vec2 p = dungeon.stairsDownPos;
-        // Put the amulet adjacent to the down-stairs cell.
+        
         for (auto& d : DIRS8) {
             Vec2 q = p + d;
             if (dungeon.inBounds(q) && dungeon.isWalkable(q) &&
@@ -1614,13 +1538,13 @@ void Game::spawnItems() {
 }
 
 void Game::pickupItemAt(Vec2 pos) {
-    // Handled inline in movePlayer; this function exists for clarity.
+    
     (void)pos;
 }
 
-// ---------------------------------------------------------------------------
-//  Using items
-// ---------------------------------------------------------------------------
+
+
+
 void Game::quaffPotionFromInventory(int idx) {
     if (idx < 0 || idx >= (int)player.inventory.size()) return;
     Item it = player.inventory[idx];
@@ -1665,7 +1589,7 @@ void Game::readScrollFromInventory(int idx) {
 
     switch (it.kind) {
         case ItemKind::ScrollLightning: {
-            // Hit strongest visible monster.
+            
             Monster* best = nullptr;
             for (auto& m : monsters) {
                 if (!m.alive) continue;
@@ -1686,12 +1610,12 @@ void Game::readScrollFromInventory(int idx) {
             msg(ss.str(), Color::BrightYellow);
             if (best->hp <= 0) killMonster(*best);
             else {
-                // Blind it – it becomes aware.
+                
             }
             break;
         }
         case ItemKind::ScrollFireball: {
-            // Damage every visible monster.
+            
             bool any = false;
             std::vector<Monster*> hits;
             for (auto& m : monsters)
@@ -1764,7 +1688,7 @@ bool Game::useInventoryItem(int idx) {
             return true;
 
         case ItemKind::Weapon: {
-            // Swap with current weapon.
+            
             Item old {
                 ItemKind::Weapon,
                 player.weaponName == "bare fists" ? "no weapon" : player.weaponName,
@@ -1821,9 +1745,9 @@ bool Game::useInventoryItem(int idx) {
     }
 }
 
-// ---------------------------------------------------------------------------
-//  Small helpers
-// ---------------------------------------------------------------------------
+
+
+
 bool Game::adjacent(Vec2 a, Vec2 b) const {
     return std::abs(a.x - b.x) <= 1 && std::abs(a.y - b.y) <= 1 &&
            !(a.x == b.x && a.y == b.y);
@@ -1864,9 +1788,9 @@ Vec2 Game::randomFloorFarFrom(Vec2 origin, int minDist) {
     return randomFloorCell(rng);
 }
 
-// ---------------------------------------------------------------------------
-//  Messages
-// ---------------------------------------------------------------------------
+
+
+
 void Game::clearMessages() { messageLog.clear(); }
 
 void Game::msg(const std::string& s) { msg(s, Color::Default); }
@@ -1895,9 +1819,9 @@ void Game::msgMonsterHit(const Monster& m, int dmg) {
     msg(ss.str(), Color::Red);
 }
 
-// ============================================================================
-// SECTION 12 - RENDERING
-// ============================================================================
+
+
+
 
 void Game::clearScreenBuffer() {
     for (int r = 0; r < TOTAL_ROWS; ++r)
@@ -1918,7 +1842,7 @@ void Game::putStr(int row, int col, const std::string& s, Color c, bool bold) {
         put(row, (int)(col + i), s[i], c, bold);
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::render() {
     clearScreenBuffer();
 
@@ -1934,7 +1858,7 @@ void Game::render() {
     blit();
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::renderTitle() {
     std::string title = "  ╔═══ SHADOWDEEP ═══╗  ";
     putStr(ROW_TITLE, MAP_COL, title, Color::BrightYellow, true);
@@ -1945,12 +1869,12 @@ void Game::renderTitle() {
            Color::BrightCyan, true);
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::renderStatus() {
     int col = MAP_COL;
     std::ostringstream ss;
 
-    // HP bar
+    
     int hp = std::max(0, player.hp);
     int barWidth = 18;
     int filled = (int)std::round((double)hp / player.maxHp * barWidth);
@@ -1971,7 +1895,7 @@ void Game::renderStatus() {
     putStr(ROW_STATUS, col, ss.str(), hpColor, true);
     col += (int)ss.str().size() + 2;
 
-    // Stats
+    
     ss.str("");
     ss << "Lv " << player.level;
     putStr(ROW_STATUS, col, ss.str(), Color::BrightCyan, true);
@@ -1993,7 +1917,7 @@ void Game::renderStatus() {
     putStr(ROW_STATUS, col, ss.str(), Color::Gold, true);
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::renderMap() {
     static char buffer[MAP_H][MAP_W];
     static Color colors[MAP_H][MAP_W];
@@ -2006,7 +1930,7 @@ void Game::renderMap() {
             bold  [y][x] = false;
         }
 
-    // --- Static terrain -----------------------------------------------------
+    
     for (int y = 0; y < MAP_H; ++y) {
         for (int x = 0; x < MAP_W; ++x) {
             Tile t = dungeon.at(x, y);
@@ -2019,7 +1943,7 @@ void Game::renderMap() {
             Color c = Color::Default;
 
             if (!vis && exp) {
-                // Dim "remembered" version.
+                
                 switch (t) {
                     case Tile::Wall:       ch = '#'; c = Color::DarkBlue; break;
                     case Tile::Floor:      ch = '.'; c = Color::Gray;      break;
@@ -2030,7 +1954,7 @@ void Game::renderMap() {
                     case Tile::Rubble:     ch = '*'; c = Color::DarkRed;   break;
                 }
             } else {
-                // Fully visible.
+                
                 switch (t) {
                     case Tile::Wall:       ch = '#'; c = Color::Steel;      break;
                     case Tile::Floor:      ch = '.'; c = Color::Gray;       break;
@@ -2046,7 +1970,7 @@ void Game::renderMap() {
         }
     }
 
-    // --- Ground items -------------------------------------------------------
+    
     for (auto& it : groundItems) {
         if (it.kind == ItemKind::None) continue;
         if (!dungeon.explored[it.pos.y][it.pos.x]) continue;
@@ -2056,7 +1980,7 @@ void Game::renderMap() {
         bold[it.pos.y][it.pos.x] = dungeon.visible[it.pos.y][it.pos.x];
     }
 
-    // --- Monsters -----------------------------------------------------------
+    
     for (auto& m : monsters) {
         if (!m.alive) continue;
         if (!dungeon.visible[m.pos.y][m.pos.x]) continue;
@@ -2065,19 +1989,19 @@ void Game::renderMap() {
         bold  [m.pos.y][m.pos.x] = true;
     }
 
-    // --- Player -------------------------------------------------------------
+    
     buffer[player.pos.y][player.pos.x] = '@';
     colors[player.pos.y][player.pos.x] = Color::BrightWhite;
     bold  [player.pos.y][player.pos.x] = true;
 
-    // --- Copy the buffer into the screen ------------------------------------
+    
     for (int y = 0; y < MAP_H; ++y)
         for (int x = 0; x < MAP_W; ++x)
             put(ROW_MAP + y, MAP_COL + x, buffer[y][x], colors[y][x],
                 bold[y][x]);
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::renderMessages() {
     int start = std::max(0, (int)messageLog.size() - MSG_LINES);
     for (int i = 0; i < MSG_LINES; ++i) {
@@ -2089,7 +2013,7 @@ void Game::renderMessages() {
     }
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::renderHint() {
     putStr(ROW_HINT, MAP_COL,
            "move: hjkl/yubn/arrows   g:get  i:inv  q:quaff  r:read  "
@@ -2097,14 +2021,14 @@ void Game::renderHint() {
            Color::Gray, false);
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::renderInventoryOverlay() {
     int boxW = 44, boxH = std::min(INV_MAX + 6, TOTAL_ROWS - 4);
     int startRow = (TOTAL_ROWS - boxH) / 2;
     int startCol = (WARN_COLS - boxW) / 2;
     if (startCol < 0) startCol = 0;
 
-    // Border
+    
     put(startRow, startCol, '+', Color::BrightCyan, true);
     for (int i = 1; i < boxW - 1; ++i) put(startRow, startCol + i, '-',
                                           Color::BrightCyan, true);
@@ -2124,7 +2048,7 @@ void Game::renderInventoryOverlay() {
            " Enter: use  x: drop  q/Esc: close ",
            Color::Gray, false);
 
-    // Contents
+    
     int row = startRow + 2;
     if (player.inventory.empty()) {
         putStr(row, startCol + 2, "(empty)", Color::Gray);
@@ -2147,7 +2071,7 @@ void Game::renderInventoryOverlay() {
         }
     }
 
-    // Show equipped gear at the bottom of the panel.
+    
     int eqRow = startRow + boxH - 2;
     std::ostringstream eq;
     eq << "Weapon: " << player.weaponName << " (+" << player.weaponPower
@@ -2156,7 +2080,7 @@ void Game::renderInventoryOverlay() {
     putStr(eqRow, startCol + 2, eq.str(), Color::Steel, true);
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::renderHelpOverlay() {
     int boxW = 66, boxH = 22;
     if (boxW > WARN_COLS) boxW = WARN_COLS;
@@ -2165,7 +2089,7 @@ void Game::renderHelpOverlay() {
     int startCol = (WARN_COLS - boxW) / 2;
     if (startCol < 0) startCol = 0;
 
-    // Fill background with spaces.
+    
     for (int r = 0; r < boxH; ++r)
         for (int c = 0; c < boxW; ++c)
             put(startRow + r, startCol + c, ' ', Color::Default);
@@ -2213,12 +2137,12 @@ void Game::renderHelpOverlay() {
     line("Press any key to return to the dungeon.", Color::BrightCyan, true);
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::renderGameOverOverlay() {
-    // Not used as an inline overlay; the death screen takes over.
+    
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::blit() {
     std::string out;
     out.reserve(WARN_COLS * TOTAL_ROWS * 2);
@@ -2232,9 +2156,9 @@ void Game::blit() {
         for (int c = 0; c < WARN_COLS; ++c) {
             const Cell& cell = screen[r][c];
             if (cell.ch == ' ' && cell.fg == Color::Default && !cell.bold) {
-                // Skip leading whitespace but keep the layout (need to advance).
+                
                 if (r < WARN_COLS && c == 0) {
-                    // fall through and write the space
+                    
                 } else {
                     out += ' ';
                     continue;
@@ -2246,7 +2170,7 @@ void Game::blit() {
             }
             if (cell.bold != currentBold) {
                 out += cell.bold ? BOLD() : RESET();
-                // After RESET we need to re-apply the color.
+                
                 if (cell.bold) {
                     out += colorCode(cell.fg);
                 } else {
@@ -2267,9 +2191,9 @@ void Game::blit() {
     std::fflush(stdout);
 }
 
-// ============================================================================
-// SECTION 13 - FULL-SCREEN MENUS
-// ============================================================================
+
+
+
 
 void Game::runHelpScreen() {
     showingHelp = true;
@@ -2279,7 +2203,7 @@ void Game::runHelpScreen() {
     render();
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::runInventoryScreen() {
     showingInventory = true;
 
@@ -2313,7 +2237,7 @@ void Game::runInventoryScreen() {
     render();
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::runDeathScreen() {
     term.restore();
 
@@ -2344,7 +2268,7 @@ void Game::runDeathScreen() {
     term.restore();
 }
 
-// ---------------------------------------------------------------------------
+
 void Game::runWinScreen() {
     term.restore();
 
@@ -2376,11 +2300,11 @@ void Game::runWinScreen() {
     term.restore();
 }
 
-} // namespace sd
+} 
 
-// ============================================================================
-//  main
-// ============================================================================
+
+
+
 int main(int argc, char** argv) {
     sd::Game game;
     return game.run(argc, argv);
