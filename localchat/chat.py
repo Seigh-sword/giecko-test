@@ -1,18 +1,15 @@
 import json
-import os
 from pathlib import Path
 from datetime import datetime
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional
 
-from rich.console import Console
-from rich.text import Text
 from rich.panel import Panel
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Prompt
 
-from localchat.config import load_config, get_models_dir, discover_models
+from localchat.config import load_config, discover_models
 from localchat.model import ModelRunner
-from localchat.templates import get_template, format_chat, detect_template_from_prompt
-from localchat.utils import console, format_file_size
+from localchat.templates import get_template, format_chat
+from localchat.utils import console
 
 
 class ChatSession:
@@ -29,7 +26,9 @@ class ChatSession:
         console.print(Panel.fit(
             f"[bold cyan]LocalChat[/bold cyan] - Local AI Assistant\n"
             f"Model: [green]{self.model_path}[/green]\n"
-            f"Type [yellow]/help[/yellow] for commands, [yellow]/clear[/yellow] to reset, [yellow]/exit[/yellow] to quit",
+            f"Type [yellow]/help[/yellow] for commands, "
+            f"[yellow]/clear[/yellow] to reset, "
+            f"[yellow]/exit[/yellow] to quit",
             title="Welcome",
             border_style="blue",
         ))
@@ -54,7 +53,7 @@ class ChatSession:
         info = self.runner.model_info
         if info:
             console.print(f"[bold]Model:[/bold] {info.name}")
-            console.print(f"[bold]Parameters:[/bold] {info.param_count:,}")
+            console.print(f"[bold]Parameters:[/bold] {info.param_count}")
             console.print(f"[bold]Context:[/bold] {info.context_size}")
             console.print()
 
@@ -119,7 +118,7 @@ class ChatSession:
         token_count = self.runner.count_tokens(formatted_prompt)
         console.print(f"[dim]Prompt: {token_count} tokens[/dim]")
 
-        console.print("[bold blue]Assistant:[/bold blue] ", end="", flush=True)
+        console.print("[bold blue]Assistant:[/bold blue] ", end="")
 
         full_response = ""
         start_time = None
@@ -128,7 +127,7 @@ class ChatSession:
         for chunk in self.runner.generate(formatted_prompt, stream=self.config.get("streaming", True)):
             if start_time is None:
                 start_time = __import__("time").time()
-            console.print(chunk, end="", flush=True)
+            console.print(chunk, end="")
             full_response += chunk
             tokens_output += 1
 

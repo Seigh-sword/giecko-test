@@ -1,7 +1,6 @@
 import time
 import sys
 from rich.console import Console
-from rich.text import Text
 
 console = Console()
 

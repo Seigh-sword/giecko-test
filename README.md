@@ -28,10 +28,13 @@ pip install -e .[cuda]
 ### Download a model
 
 ```bash
-localchat download Qwen/Qwen2-1.5B-Chat
-localchat download meta-llama/Llama-2-7b-chat-hf
-localchat download microsoft/Phi-3-mini-4k-instruct
+localchat download TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF
+localchat download TheBloke/Llama-2-7B-Chat-GGUF
+localchat download TheBloke/Mistral-7B-Instruct-v0.2-GGUF
+localchat download TheBloke/Qwen2-7B-Chat-GGUF
 ```
+
+Models are downloaded from HuggingFace GGUF repositories (TheBloke, bartowski, and others). Use `localchat download-models` to browse popular models.
 
 ### List downloaded models
 
@@ -66,8 +69,8 @@ localchat eval model.gguf "Write a Python function to sort a list"
 | `localchat chat [MODEL]` | Start interactive chat session |
 | `localchat generate MODEL PROMPT` | Generate a single response |
 | `localchat eval MODEL PROMPT` | Generate with timing info |
-| `localchat download MODEL_ID` | Download from HuggingFace |
-| `localchat models` | List downloaded models |
+| `localchat download MODEL_ID` | Download GGUF from HuggingFace (e.g., `TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF`) |
+| `localchat download-models`  | Browse popular models with GGUF availability
 | `localchat info MODEL` | Show model information |
 | `localchat template NAME` | Show chat template for model |
 | `localchat config` | View/edit configuration |
@@ -85,6 +88,24 @@ Inside the chat session, you can use:
 | `/load <name>` | Load conversation |
 | `/model [path]` | Switch model or list models |
 | `/exit` | Exit |
+
+### Single Prompt Mode
+
+Run a single prompt and exit:
+
+```bash
+localchat chat model.gguf --prompt "Explain quantum computing"
+localchat chat model.gguf -p "Explain quantum computing" -m 256
+```
+
+### Quick Generate
+
+```bash
+localchat generate model.gguf "Explain quantum computing"
+localchat eval model.gguf "Write a Python function to sort a list"
+```
+
+`generate` outputs the response text. `eval` also shows timing and token statistics.
 
 ## Configuration
 

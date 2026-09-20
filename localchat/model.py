@@ -2,12 +2,11 @@ import time
 import logging
 from pathlib import Path
 from typing import Optional, List, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from llama_cpp import Llama
 
 from localchat.config import load_config
-from localchat.utils import format_tokens_per_sec, format_duration
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +49,7 @@ class ModelRunner:
         start = time.time()
         n_ctx = self.config.get("n_ctx", 4096)
         n_gpu_layers = self.config.get("n_gpu_layers", 0)
-        temp = self.config.get("temperature", 0.7)
-        top_p = self.config.get("top_p", 0.9)
-        top_k = self.config.get("top_k", 40)
-        repeat_penalty = self.config.get("repeat_penalty", 1.1)
+        _ = self.config.get("temperature", 0.7)
 
         self.llm = Llama(
             model_path=self.model_path,
@@ -65,26 +61,34 @@ class ModelRunner:
 
         try:
             meta = getattr(self.llm, "metadata", {}) or {}
-            arch = meta.get("general.architecture", "unknown")
+            _ = meta.get("general.architecture", "unknown")
             model_name = meta.get("general.name", Path(self.model_path).stem)
             context_length = int(meta.get("llama.context_length", self.llm.n_ctx()))
             embedding_dim = self.llm.n_embd()
             vocab_size = self.llm.n_vocab()
             n_layers = int(meta.get("llama.block_count", 0))
-            n_heads = int(meta.get("llama.attention.head_count", 0))
+            _ = int(meta.get("llama.attention.head_count", 0))
             ffn_dim = int(meta.get("llama.feed_forward_length", embedding_dim * 2))
 
             # Rough parameter count estimation
             param_count = 0
             param_count += vocab_size * embedding_dim  # token embedding
-            param_count += n_layers * (embedding_dim * 4 * ffn_dim + embedding_dim * embedding_dim * 2)  # transformer layers
+            param_count += n_layers * (
+                embedding_dim * 4 * ffn_dim
+                + embedding_dim * embedding_dim * 2
+            )  # transformer layers
             param_count += vocab_size * embedding_dim  # output projection
-            param_count = int(param_count * 1e-6)  # in millions
+
+            param_count_display = (
+                f"{param_count / 1e9:.2f}B" if param_count >= 1e9
+                else f"{param_count / 1e6:.1f}M" if param_count >= 1e6
+                else str(param_count)
+            )
 
             self.model_info = ModelInfo(
                 name=model_name,
                 path=self.model_path,
-                param_count=param_count,
+                param_count=param_count_display,
                 context_size=context_length,
                 embedding_dim=embedding_dim,
                 tokenizer=f"vocab={vocab_size}",
@@ -212,5 +216,9 @@ class ModelRunner:
 
     def __repr__(self):
         if self.model_info:
-            return f"ModelRunner(name={self.model_info.name}, params={self.model_info.param_count}, ctx={self.model_info.context_size})"
+            return (
+                f"ModelRunner(name={self.model_info.name}, "
+                f"params={self.model_info.param_count}, "
+                f"ctx={self.model_info.context_size})"
+            )
         return "ModelRunner(unloaded)"

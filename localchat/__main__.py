@@ -1,4 +1,5 @@
 """LocalChat - Local AI Assistant for running small LLMs."""
 from localchat.cli import main
 
-__all__ = ["main"]
+if __name__ == "__main__":
+    main()

@@ -1,32 +1,25 @@
 import os
-import json
 import requests
 from pathlib import Path
-from rich.console import Console
-from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from localchat.config import get_models_dir, load_config, discover_models
+from localchat.config import get_models_dir
 from localchat.utils import console, format_file_size
 
 
 HF_BASE = "https://huggingface.co"
 
 POPULAR_MODELS = [
-    "meta-llama/Llama-2-7b-chat-hf",
-    "meta-llama/Llama-2-13b-chat-hf",
-    "meta-llama/Llama-2-70b-chat-hf",
-    "Qwen/Qwen2-7B-Chat",
-    "Qwen/Qwen2-1.5B-Chat",
-    "Qwen/Qwen2-3B-Chat",
-    "Qwen/Qwen2-14B-Chat",
-    "microsoft/Phi-3-mini-4k-instruct",
-    "microsoft/Phi-3.5-mini-instruct",
-    "google/gemma-2-2b-it",
-    "google/gemma-2-9b-it",
-    "mistralai/Mistral-7B-Instruct-v0.3",
-    "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    "EleutherAI/gpt-j-6b",
+    "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
+    "TheBloke/Llama-2-7B-Chat-GGUF",
+    "TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
+    "TheBloke/Phi-2-GGUF",
+    "TheBloke/Gemma-2-9B-It-GGUF",
+    "TheBloke/Qwen2-7B-Chat-GGUF",
+    "TheBloke/Meta-Llama-2-7B-Chat-GGUF",
+    "bartowski/Llama-2-7B-Chat-GGUF",
+    "barisian/Phi-3-mini-4k-GGUF",
+    "UnfilteredAI/Meta-Llama-2-7B-Chat-GGUF",
 ]
 
 
@@ -68,7 +61,6 @@ def resolve_gguf_url(model_id: str, filename: str = None, token: str = None) -> 
 
 
 def download_model(model_id: str, save_dir: str = None, filename: str = None, token: str = None, progress=None):
-    config = load_config()
     if save_dir is None:
         save_dir = str(get_models_dir())
 

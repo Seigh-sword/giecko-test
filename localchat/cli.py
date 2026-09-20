@@ -1,14 +1,10 @@
 import click
 import json
-import os
 import sys
-import time
-from pathlib import Path
 
-from rich.console import Console
 from rich.markup import escape
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 
 from localchat import __version__
 from localchat.config import (
@@ -16,17 +12,15 @@ from localchat.config import (
     save_config,
     get_models_dir,
     discover_models,
-    get_config_path,
 )
-from localchat.model import ModelRunner, GenerationResult
+from localchat.model import ModelRunner
 from localchat.chat import ChatSession
 from localchat.download import (
     download_model,
     list_huggingface_models,
-    resolve_gguf_url,
 )
-from localchat.templates import get_template, detect_template_from_prompt
-from localchat.utils import console, format_file_size
+from localchat.templates import get_template, format_chat
+from localchat.utils import console
 
 
 @click.group()
@@ -70,10 +64,16 @@ def chat(ctx, model_path, system, interactive, prompt, max_tokens, temperature, 
         runner.load()
         template = get_template(model_path)
         formatted_prompt = format_chat(template, system, [], prompt)
-        console.print(f"[bold blue]Assistant:[/bold blue] ", end="", flush=True)
+        console.print("[bold blue]Assistant:[/bold blue] ", end="")
         full_response = ""
-        for chunk in runner.generate(formatted_prompt, max_tokens=max_tokens, temperature=temperature, top_p=top_p, stream=config.get("streaming", True)):
-            console.print(chunk, end="", flush=True)
+        for chunk in runner.generate(
+            formatted_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            stream=config.get("streaming", True),
+        ):
+            console.print(chunk, end="")
             full_response += chunk
         console.print()
         runner.unload()
@@ -126,8 +126,6 @@ def generate(ctx, model_path, prompt, max_tokens, temperature, top_p, top_k, rep
 @click.option("--dir", default=None, help="Download directory")
 @click.pass_context
 def download(ctx, model_id, filename, token, dir):
-    config = ctx.obj["config"]
-
     with console.status(f"[bold cyan]Resolving model {model_id}[/bold cyan]"):
         path = download_model(model_id, save_dir=dir, filename=filename, token=token)
 
@@ -138,7 +136,6 @@ def download(ctx, model_id, filename, token, dir):
 @cli.command("models")
 @click.pass_context
 def models(ctx):
-    config = ctx.obj["config"]
     models = discover_models()
 
     if not models:
@@ -160,7 +157,8 @@ def models(ctx):
 
 
 @cli.command("list-models")
-def list_models():
+@click.pass_context
+def list_models(ctx):
     ctx.invoke(models)
 
 
@@ -176,7 +174,7 @@ def info(ctx, model_path):
         info = runner.model_info
         console.print(Panel.fit(
             f"[bold]Name:[/bold] {info.name}\n"
-            f"[bold]Parameters:[/bold] {info.param_count:,}\n"
+            f"[bold]Parameters:[/bold] {info.param_count}\n"
             f"[bold]Context:[/bold] {info.context_size}\n"
             f"[bold]Embedding dim:[/bold] {info.embedding_dim}\n"
             f"[bold]Path:[/bold] {info.path}",
@@ -242,13 +240,18 @@ def cfg(ctx, set_key, get_key, list_config):
 @click.argument("model_path")
 @click.argument("prompt")
 @click.option("--max-tokens", "-m", default=128, help="Max tokens")
+@click.option("--temperature", "-t", default=None, type=float, help="Temperature")
 @click.pass_context
-def eval_cmd(ctx, model_path, prompt, max_tokens):
+def eval_cmd(ctx, model_path, prompt, max_tokens, temperature):
     config = ctx.obj["config"]
     runner = ModelRunner(model_path, config)
     runner.load()
 
-    result = runner.generate_full(prompt, max_tokens=max_tokens)
+    result = runner.generate_full(
+        prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
 
     console.print(result.text)
     console.print()
