@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       stack:
-        description: 'Session: "ide" = terminal + VS Code, "terminal" = shell only, "vscode" = VS Code only'
+        description: 'Session: "ide" = terminal + VS Code, "terminal" = shell only, "vscode" = VS Code only, "desktop" = full GUI OS in the browser'
         required: false
         default: 'ide'
         type: choice
-        options: [ide, terminal, vscode]
+        options: [ide, terminal, vscode, desktop]
       os:
         description: 'Runner OS (docker distros are only available on ubuntu)'
         required: false
@@ -50,6 +50,14 @@ on:
         description: 'Optional: Cloudflare named-tunnel token (blank = random trycloudflare.com URL)'
         required: false
         default: ''
+      restore:
+        description: 'Optional: run id whose saved files to copy into the new workspace at boot'
+        required: false
+        default: ''
+      plugins:
+        description: 'Optional: npm packages to install into the session (space-separated, each tagged gcko.pkg-<name>)'
+        required: false
+        default: ''
   push:
     branches: [arena/01a09a7b-giecko]
 
@@ -66,6 +74,8 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CF_TUNNEL_TOKEN: ${{ inputs.cf_token }}
+      GIECKO_RESTORE: ${{ inputs.restore }}
+      GIECKO_PLUGINS: ${{ inputs.plugins }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -82,7 +92,7 @@ jobs:
             "${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[noauth]') && '__BLANK__' || 'test-giecko-123') || inputs.password }}" \
             "${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[quick]') && '0' || '10') || inputs.duration_minutes }}" \
             "${{ inputs.packages }}" \
-            "${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[stack=vscode]') && 'vscode' || contains(github.event.head_commit.message, '[stack=terminal]') && 'terminal' || 'ide') || inputs.stack }}" \
+            "${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[stack=vscode]') && 'vscode' || contains(github.event.head_commit.message, '[stack=terminal]') && 'terminal' || contains(github.event.head_commit.message, '[stack=desktop]') && 'desktop' || 'ide') || inputs.stack }}" \
             "${{ github.event_name == 'push' && '0' || inputs.autosave_minutes }}" \
             "${{ github.event_name == 'push' && 'giecko' || inputs.user }}" \
             "${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[mask]') || inputs.mask }}" \

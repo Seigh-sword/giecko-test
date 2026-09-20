@@ -20,7 +20,7 @@ cmd_help() {
  giecko — your pocket toolkit
 
   On your LAPTOP (run inside your Giecko repo clone):
-    giecko up [--stack ide] [--duration 180] [--password PW]
+    giecko up [--stack ide|desktop] [--duration 180] [--password PW]
               [--packages "go hugo"] [--autosave 15] [--repo owner/repo] [--no-open]
         dispatch a new session, wait till it's live, open the run page
     giecko ls [--repo owner/repo]
@@ -53,6 +53,7 @@ cmd_urls() {
   if [ "$IN_SESSION" = 0 ]; then echo "  not inside a session. Try: giecko ls"; return 0; fi
   echo "  terminal: ${GIECKO_URL_TERM:-"(see the Actions run summary)"}"
   [ -n "${GIECKO_URL_CODE:-}" ] && echo " vscode:    $GIECKO_URL_CODE"
+  [ -n "${GIECKO_URL_DESK:-}" ] && echo " desktop:   $GIECKO_URL_DESK"
 }
 
 cmd_save() {
@@ -98,6 +99,7 @@ cmd_watch() {
        && out=$(git show "FETCH_HEAD:reports/run-$id.md" 2>/dev/null); then
       term=$(echo "$out" | grep -oE 'url_terminal: .*' | sed 's/url_terminal: //' | head -n 1 || echo "?")
       code=$(echo "$out" | grep -oE 'url_code: .*' | sed 's/url_code: //' | head -n 1 || echo "?")
+      desk=$(echo "$out" | grep -oE 'url_desktop: .*' | sed 's/url_desktop: //' | head -n 1 || echo "?")
       region=$(echo "$out" | grep -oE 'region: [^,]+' | sed 's/region: //' || echo "?")
       boot=$(echo "$out" | grep -oE 'boot_seconds: [0-9]+' | awk '{print $2}' || echo "?")
       show_url() {
@@ -115,6 +117,7 @@ cmd_watch() {
 ============================================================
     terminal: $(show_url "$term")
    vscode:    $(show_url "$code")
+   desktop:   $(show_url "$desk")
    region: $region    boot: ${boot}s
    password: ${pw:-"(the one you dispatched with)"}
 ============================================================
@@ -124,6 +127,7 @@ EOF
       if command -v qrencode >/dev/null 2>&1; then
         case "$term" in https://*) echo " terminal QR:"; qrencode -t UTF8 -m 1 "$term" || true;; esac
         case "$code" in https://*) echo " vscode QR:"; qrencode -t UTF8 -m 1 "$code" || true;; esac
+        case "$desk" in https://*) echo " desktop QR:"; qrencode -t UTF8 -m 1 "$desk" || true;; esac
       fi
       return 0
     fi

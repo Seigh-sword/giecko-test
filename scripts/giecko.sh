@@ -14,15 +14,20 @@ DISTRO="${8:-runner}"
 
 TERM_PORT=7681
 CODE_PORT=8080
+DESK_PORT=6080
+VNC_PORT=5900
+DESK_DISPLAY=99
 RUN_ID="${GITHUB_RUN_ID:-local}"
 REPO_SLUG="${GITHUB_REPOSITORY:-}"
 BOOT_START=$SECONDS
 HEARTBEATS=0
 URL_TERM=""
 URL_CODE=""
+URL_DESK=""
 CODE_OK=0
 CODE_WARNED=0
 NAMED=0
+DESK_OK=0
 OSNAME="$(uname -s)"
 ARCH="amd64"; case "$(uname -m)" in arm64|aarch64) ARCH="arm64";; esac
 IS_WINDOWS=0; case "$OSNAME" in MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1;; esac
@@ -32,7 +37,7 @@ RUNDIR="$PWD/.giecko"
 CODER_VER_FALLBACK="4.137.0"
 mkdir -p "$RUNDIR"
 
-case "$STACK" in terminal|vscode|ide) ;; *) echo "  unknown stack '$STACK', using ide"; STACK="ide";; esac
+case "$STACK" in terminal|vscode|ide|desktop) ;; *) echo "  unknown stack '$STACK', using ide"; STACK="ide";; esac
 case "$DISTRO" in runner|ubuntu|debian|fedora|arch|alpine) ;; *) echo "  unknown distro '$DISTRO', using runner"; DISTRO="runner";; esac
 if [ "$DISTRO" != "runner" ]; then
   if [ "$OSNAME" = "Darwin" ] || [ "$IS_WINDOWS" = 1 ]; then
@@ -40,10 +45,17 @@ if [ "$DISTRO" != "runner" ]; then
     DISTRO="runner"
   fi
 fi
+if [ "$STACK" = "desktop" ]; then
+  if [ "$DISTRO" != "runner" ]; then
+    echo " desktop runs on the runner host; distro forced to runner"
+    DISTRO="runner"
+  fi
+fi
 NEED_TTYD=1; NEED_CODE=1; CODE_REQUIRED=0
 [ "$STACK" = "vscode" ] && NEED_TTYD=0
 [ "$STACK" = "terminal" ] && NEED_CODE=0
 [ "$STACK" = "vscode" ] && CODE_REQUIRED=1
+[ "$STACK" = "desktop" ] && NEED_CODE=0
 
 if [ "$(id -u)" -eq 0 ]; then SUDO=""; CAN_ROOT=1
 elif command -v sudo >/dev/null 2>&1; then SUDO="sudo"; CAN_ROOT=1
@@ -118,7 +130,7 @@ publish_report() {
   local out
   if out=$( ( _publish_report_inner "$@" ) 2>&1 ); then
     echo "$out"
-    echo "::notice::giecko report [$1]: term=$(pub_url "$URL_TERM") code=$(pub_url "$URL_CODE") boot=${BOOT_SECS:-?}s heartbeats=$HEARTBEATS"
+    echo "::notice::giecko report [$1]: term=$(pub_url "$URL_TERM") code=$(pub_url "$URL_CODE") desk=$(pub_url "$URL_DESK") boot=${BOOT_SECS:-?}s heartbeats=$HEARTBEATS"
   else
     out="${out//$GITHUB_TOKEN/REDACTED}"
     echo "::warning::giecko report publish failed ($1): ${out:0:500}"
@@ -147,9 +159,10 @@ _publish_report_inner() {
     echo "- boot_seconds: ${BOOT_SECS:-$((SECONDS - BOOT_START))}, heartbeats: $HEARTBEATS"
     echo "- url_terminal: $([ -n "$URL_TERM" ] && pub_url "$URL_TERM" || echo "NO")"
     echo "- url_code: $([ -n "$URL_CODE" ] && pub_url "$URL_CODE" || echo "NO")"
+    echo "- url_desktop: $([ -n "$URL_DESK" ] && pub_url "$URL_DESK" || echo "NO")"
     echo "- work_branch: $WORK_BRANCH"
     echo "- versions: $(cloudflared --version 2>/dev/null | head -n 1) / $([ "$NEED_TTYD" = 1 ] && ttyd --version 2>/dev/null || echo "ttyd: n/a") / $([ "$CODE_OK" = 1 ] && "$CODE_BIN" --version 2>/dev/null | head -n 1 || echo "code-server: n/a")"
-    for f in ttyd.log term-tunnel.log code-server.log code-tunnel.log distro-setup.log; do
+    for f in ttyd.log term-tunnel.log code-server.log code-tunnel.log distro-setup.log xvfb.log xfce.log x11vnc.log novnc.log desk-tunnel.log; do
       if [ -f "$RUNDIR/$f" ]; then
         echo ""
         echo "## $f (tail, redacted)"
@@ -197,11 +210,11 @@ sys_pkgs() {
   EPA=()
   [ -n "$EXTRA_PKGS" ] && read -ra EPA <<< "$EXTRA_PKGS"
   if [ "$IS_WINDOWS" = 1 ]; then
-    echo "windows beta: system packages are not installed automatically"
+    echo "windows: system packages are not installed automatically"
     return 0
   fi
   if [ "$OSNAME" = "Darwin" ]; then
-    command -v brew >/dev/null 2>&1 || { echo "  no brew, skipping system packages (macOS experimental)"; return 0; }
+    command -v brew >/dev/null 2>&1 || { echo "  no brew, skipping system packages"; return 0; }
     echo " brew: installing tools (may take a while on first run)..."
     for p in tmux qrencode lrzsz; do
       command -v "$p" >/dev/null 2>&1 || brew install "$p" 2>/dev/null || echo "  $p via brew failed"
@@ -219,6 +232,11 @@ sys_pkgs() {
   priv apt-get install -y -qq tmux tree jq htop zip unzip sqlite3 qrencode lrzsz "${EPA[@]}" \
     || echo "  some apt packages failed (run the install command live to retry)"
   priv apt-get install -y -qq fastfetch 2>/dev/null || true
+  if [ "$STACK" = "desktop" ]; then
+    echo " apt: installing desktop (XFCE + noVNC)..."
+    priv apt-get install -y -qq --no-install-recommends xvfb x11vnc novnc websockify dbus dbus-x11 x11-xserver-utils xfce4 xfce4-terminal thunar xterm fonts-dejavu-core adwaita-icon-theme \
+      || echo "  some desktop packages failed"
+  fi
 }
 fetch() {
   curl -fsSL --retry 8 --retry-delay 5 --retry-max-time 150 --retry-all-errors "$@"
@@ -307,6 +325,7 @@ if [ "$NEED_TTYD" = 1 ]; then wait $P2 || fail "ttyd install failed"; fi
 CODE_DL_OK=1
 if [ "$NEED_CODE" = 1 ]; then wait $P3 || CODE_DL_OK=0; fi
 wait $P4 || true
+if [ "$STACK" = "desktop" ] && [ "$OSNAME" = "Linux" ]; then command -v Xvfb >/dev/null 2>&1 || fail "desktop packages did not install"; fi
 cloudflared --version
 [ "$NEED_TTYD" = 1 ] && ttyd --version
 
@@ -330,6 +349,16 @@ if [ -f "$SCRIPT_DIR/giecko" ]; then
   priv cp "$SCRIPT_DIR/giecko" "$BIN_DIR/giecko" && priv chmod +x "$BIN_DIR/giecko" && echo " giecko CLI installed"
 else
   echo "  scripts/giecko not found next to installer, 'giecko save' disabled"
+fi
+
+if [ -n "${GIECKO_PLUGINS:-}" ]; then
+  echo " installing plugins..."
+  if command -v npm >/dev/null 2>&1; then
+    read -ra PLUGIN_PKGS <<< "$GIECKO_PLUGINS"
+    npm install -g --silent "${PLUGIN_PKGS[@]}" 2>/dev/null || echo "  some plugins failed to install"
+  else
+    echo "  no npm on this runner, plugins skipped"
+  fi
 fi
 if [ "$NEED_TTYD" = 1 ]; then command -v tmux >/dev/null 2>&1 || echo "  no tmux, shell won't persist across reconnects"; fi
 
@@ -393,6 +422,21 @@ else
 fi
 if [ "${GITHUB_EVENT_NAME:-}" = "push" ]; then
   echo "save-test $RUN_ID @ $(date -u)" > "$WORKDIR/.giecko-save-test.txt"
+fi
+
+if [ -n "${GIECKO_RESTORE:-}" ] && [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "$REPO_SLUG" ]; then
+  echo " restoring files from run $GIECKO_RESTORE..."
+  _RAUTH="https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO_SLUG}.git"
+  rm -rf /tmp/giecko-restore
+  if git clone -q --depth 1 --branch "giecko-work/run-$GIECKO_RESTORE" "$_RAUTH" /tmp/giecko-restore 2>"$RUNDIR/restore.log"; then
+    ( cd /tmp/giecko-restore && tar --exclude=.git -cf - . ) | ( cd "$WORKDIR" && tar -xf - )
+    echo " restored files from run $GIECKO_RESTORE"
+  else
+    echo "  restore failed (no saved branch for that run?), continuing fresh"
+    tail -n 3 "$RUNDIR/restore.log" 2>/dev/null || true
+  fi
+  rm -rf /tmp/giecko-restore
+  unset _RAUTH
 fi
 
 setup_distro() {
@@ -493,6 +537,81 @@ if [ "$NEED_CODE" = 1 ]; then
   else echo "  code-server didn't start, continuing terminal-only:"; tail -n 10 "$RUNDIR/code-server.log" || true; fi
 fi
 
+if [ "$STACK" = "desktop" ]; then
+  VNC_PW="${PASSWORD:0:8}"
+  WS_CMD=(websockify)
+  rm -f "$RUNDIR"/xvfb.log "$RUNDIR"/xfce.log "$RUNDIR"/x11vnc.log "$RUNDIR"/novnc.log "$RUNDIR"/xvfb.pid "$RUNDIR"/xfce.pid "$RUNDIR"/x11vnc.pid "$RUNDIR"/novnc.pid "$RUNDIR"/novnc.tgz
+  if [ "$OSNAME" = "Linux" ]; then
+    echo "  starting desktop (Xvfb + XFCE + x11vnc + noVNC)..."
+    nohup Xvfb ":$DESK_DISPLAY" -screen 0 1600x900x24 > "$RUNDIR/xvfb.log" 2>&1 &
+    echo "$!" > "$RUNDIR/xvfb.pid"
+    sleep 2
+    kill -0 "$(cat "$RUNDIR/xvfb.pid" 2>/dev/null)" 2>/dev/null || { cat "$RUNDIR/xvfb.log" || true; fail "Xvfb failed to start"; }
+    DISPLAY=":$DESK_DISPLAY" nohup dbus-run-session -- startxfce4 > "$RUNDIR/xfce.log" 2>&1 &
+    echo "$!" > "$RUNDIR/xfce.pid"
+    sleep 3
+    VNC_OPTS=(-display ":$DESK_DISPLAY" -rfbport "$VNC_PORT" -forever -shared -noxdamage)
+    [ -n "$VNC_PW" ] && VNC_OPTS+=(-passwd "$VNC_PW")
+    nohup x11vnc "${VNC_OPTS[@]}" > "$RUNDIR/x11vnc.log" 2>&1 &
+    echo "$!" > "$RUNDIR/x11vnc.pid"
+    sleep 1
+    kill -0 "$(cat "$RUNDIR/x11vnc.pid" 2>/dev/null)" 2>/dev/null || { cat "$RUNDIR/x11vnc.log" || true; fail "x11vnc failed to start"; }
+    NOVNC_DIR=/usr/share/novnc
+    [ -d "$NOVNC_DIR" ] || NOVNC_DIR=/usr/share/webapps/novnc
+  elif [ "$OSNAME" = "Darwin" ]; then
+    echo "  macOS desktop: enabling the built-in VNC server..."
+    KS="/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart"
+    if [ -n "$VNC_PW" ]; then
+      priv "$KS" -activate -configure -access -on -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "$VNC_PW" -restart -agent -privs -all || fail "could not enable the macOS VNC server"
+    else
+      priv "$KS" -activate -configure -access -on -clientopts -setvnclegacy -vnclegacy yes -restart -agent -privs -all || fail "could not enable the macOS VNC server"
+    fi
+    vup=0
+    for _ in {1..30}; do nc -z 127.0.0.1 "$VNC_PORT" 2>/dev/null && { vup=1; break; }; sleep 2; done
+    [ "$vup" = 1 ] || fail "macOS VNC server never came up on port $VNC_PORT"
+    PYBIN=python3
+    command -v python3 >/dev/null 2>&1 || PYBIN=python
+    "$PYBIN" -m pip install --user --quiet websockify >/dev/null 2>&1 || fail "websockify install failed"
+    WS_CMD=("$PYBIN" -c "from websockify.websocketproxy import websockify_init; websockify_init()")
+    NOVNC_DIR="$RUNDIR/novnc-1.4.0"
+    if [ ! -d "$NOVNC_DIR" ]; then
+      echo "  fetching noVNC (web client)..."
+      fetch -o "$RUNDIR/novnc.tgz" "https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.tar.gz" || fail "noVNC download failed"
+      tar -xzf "$RUNDIR/novnc.tgz" -C "$RUNDIR" || fail "noVNC extract failed"
+    fi
+  elif [ "$IS_WINDOWS" = 1 ]; then
+    echo "  windows desktop: installing TightVNC..."
+    if [ -n "$VNC_PW" ]; then
+      choco install tightvnc -y --params "/PASSWORD:$VNC_PW" >/dev/null 2>&1 || fail "tightvnc install failed (password mode)"
+    else
+      choco install tightvnc -y >/dev/null 2>&1 || fail "tightvnc install failed"
+    fi
+    (cmd //c start explorer.exe >/dev/null 2>&1 || true) &
+    vup=0
+    for _ in {1..45}; do netstat -an | grep -q ":$VNC_PORT .*LISTENING" && { vup=1; break; }; sleep 2; done
+    [ "$vup" = 1 ] || fail "tightvnc never came up on port $VNC_PORT"
+    PYBIN=python3
+    command -v python3 >/dev/null 2>&1 || PYBIN=python
+    "$PYBIN" -m pip install --user --quiet websockify >/dev/null 2>&1 || fail "websockify install failed"
+    WS_CMD=("$PYBIN" -c "from websockify.websocketproxy import websockify_init; websockify_init()")
+    NOVNC_DIR="$RUNDIR/novnc-1.4.0"
+    if [ ! -d "$NOVNC_DIR" ]; then
+      echo "  fetching noVNC (web client)..."
+      fetch -o "$RUNDIR/novnc.tgz" "https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.tar.gz" || fail "noVNC download failed"
+      tar -xzf "$RUNDIR/novnc.tgz" -C "$RUNDIR" || fail "noVNC extract failed"
+    fi
+  else
+    fail "desktop mode is not supported on this OS"
+  fi
+  nohup "${WS_CMD[@]}" --web "$NOVNC_DIR" "$DESK_PORT" "localhost:$VNC_PORT" > "$RUNDIR/novnc.log" 2>&1 &
+  echo "$!" > "$RUNDIR/novnc.pid"
+  up=0
+  for _ in {1..30}; do http_up "$DESK_PORT" && { up=1; break; }; sleep 1; done
+  [ "$up" = 1 ] || { cat "$RUNDIR/novnc.log" || true; fail "noVNC failed to start"; }
+  DESK_OK=1
+  echo " desktop is up"
+fi
+
 start_tunnel() {
   rm -f "$2" "$3"
   nohup cloudflared tunnel --url "http://127.0.0.1:$1" --no-autoupdate > "$2" 2>&1 &
@@ -524,6 +643,7 @@ if [ -n "${CF_TUNNEL_TOKEN:-}" ]; then
   if [ "$up" = 1 ]; then
     [ "$NEED_TTYD" = 1 ] && URL_TERM="named-tunnel"
     [ "$CODE_OK" = 1 ] && URL_CODE="named-tunnel"
+    [ "$DESK_OK" = 1 ] && URL_DESK="named-tunnel"
     echo " named tunnel is up"
   else
     tail -n 10 "$RUNDIR/named-tunnel.log" 2>/dev/null || true
@@ -548,9 +668,17 @@ if [ "$CODE_OK" = 1 ]; then
 fi
 fi
 
+if [ "$DESK_OK" = 1 ]; then
+  echo "  opening desktop tunnel..."
+  start_tunnel "$DESK_PORT" "$RUNDIR/desk-tunnel.log" "$RUNDIR/desk-tunnel.pid"
+  URL_DESK=$(wait_tunnel "$RUNDIR/desk-tunnel.log" "$RUNDIR/desk-tunnel.pid") \
+    || { echo " desktop tunnel failed. Log:"; cat "$RUNDIR/desk-tunnel.log"; fail "desktop tunnel failed"; }
+  URL_DESK="$URL_DESK/vnc.html?autoconnect=true&resize=scale"
+fi
 {
   echo "GIECKO_URL_TERM='$URL_TERM'"
   echo "GIECKO_URL_CODE='$URL_CODE'"
+  echo "GIECKO_URL_DESK='$URL_DESK'"
   echo "GIECKO_USER='$USER'"
   echo "GIECKO_RUN_ID='$RUN_ID'"
   echo "GIECKO_REGION='$REGION'"
@@ -561,9 +689,11 @@ fi
 BOOT_SECS=$((SECONDS - BOOT_START))
 DISP_TERM=$(pub_url "$URL_TERM")
 DISP_CODE=$(pub_url "$URL_CODE")
+DISP_DESK=$(pub_url "$URL_DESK")
 if [ "$NAMED" = 1 ]; then
   DISP_TERM="your Cloudflare hostname"
   DISP_CODE="your Cloudflare hostname"
+  DISP_DESK="your Cloudflare hostname"
 fi
 LOGIN_LINE="user \`$USER\` + your workflow password"
 [ -z "$PASSWORD" ] && LOGIN_LINE="none — OPEN SESSION, anyone with the link gets in "
@@ -575,6 +705,8 @@ cat <<EOF
 EOF
 [ -n "$URL_TERM" ] && echo "    terminal: $DISP_TERM"
 [ -n "$URL_CODE" ] && echo "   vscode:    $DISP_CODE"
+[ -n "$URL_DESK" ] && echo "   desktop:   $DISP_DESK"
+[ -n "$URL_DESK" ] && [ -n "$PASSWORD" ] && echo "   desktop login: type the FIRST 8 characters of your password"
 cat <<EOF
    login: $LOGIN_LINE
    runner region: $REGION — typing lag ≈ your distance to here
@@ -591,11 +723,15 @@ if [ -n "$URL_CODE" ]; then
   echo " vscode QR (square — scan it):"
   qr_block "$URL_CODE"
 fi
+if [ -n "$URL_DESK" ]; then
+  echo " desktop QR (square — scan it):"
+  qr_block "$URL_DESK"
+fi
 [ "$MASK" = 1 ] && echo " mask is ON: hostnames hidden above; the QR codes still carry the real URLs."
 echo " code feels laggy in raw terminal? Use the vscode URL — the editor types instantly."
 echo ""
 
-echo "::notice::giecko-live term=${DISP_TERM:-none} code=${DISP_CODE:-none} boot=${BOOT_SECS}s region=$REGION stack=$STACK distro=$DISTRO_EFF auth=$([ -n "$PASSWORD" ] && echo on || echo OFF) run=$RUN_ID work=$WORK_BRANCH"
+echo "::notice::giecko-live term=${DISP_TERM:-none} code=${DISP_CODE:-none} desk=${DISP_DESK:-none} boot=${BOOT_SECS}s region=$REGION stack=$STACK distro=$DISTRO_EFF auth=$([ -n "$PASSWORD" ] && echo on || echo OFF) run=$RUN_ID work=$WORK_BRANCH"
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   {
@@ -615,6 +751,10 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
       if [ "$MASK" = 1 ]; then echo "| **VS Code** | \`$DISP_CODE\` (masked — scan the QR in the logs) |"
       else echo "| **VS Code** | [$URL_CODE]($URL_CODE) |"; fi
     fi
+    if [ -n "$URL_DESK" ]; then
+      if [ "$MASK" = 1 ]; then echo "| **Desktop** | \`$DISP_DESK\` (masked — scan the QR in the logs) |"
+      else echo "| **Desktop** | [open desktop]($URL_DESK) |"; fi
+    fi
     echo "| **Login** | $LOGIN_LINE |"
     echo "| **Region** | \`$REGION\` |"
     echo "| **Stack** | \`$STACK\` on \`$DISTRO_EFF\` ($OSNAME) |"
@@ -623,6 +763,7 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     if [ "$MASK" = 0 ]; then
       [ "$NAMED" != 1 ] && [ -n "$URL_TERM" ] && { echo "Terminal QR:"; echo '```'; qr_block "$URL_TERM"; echo '```'; }
       [ "$NAMED" != 1 ] && [ -n "$URL_CODE" ] && { echo "VS Code QR:"; echo '```'; qr_block "$URL_CODE"; echo '```'; }
+      [ "$NAMED" != 1 ] && [ -n "$URL_DESK" ] && { echo "Desktop QR:"; echo '```'; qr_block "$URL_DESK"; echo '```'; }
     fi
     echo " Save work with \`giecko save\` ·  download files with \`tsz <file>\` ·  upload with \`trz\`"
     echo " Files live on branch \`$WORK_BRANCH\`"
@@ -631,6 +772,7 @@ fi
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   echo "url=$URL_TERM" >> "$GITHUB_OUTPUT"
   [ -n "$URL_CODE" ] && echo "url_code=$URL_CODE" >> "$GITHUB_OUTPUT"
+  [ -n "$URL_DESK" ] && echo "url_desk=$URL_DESK" >> "$GITHUB_OUTPUT"
 fi
 
 publish_report live "booted in ${BOOT_SECS}s" || true
@@ -676,6 +818,15 @@ while [ "$SECONDS" -lt "$END" ]; do
       CODE_OK=0
       [ "$CODE_WARNED" = 0 ] && { echo "  vscode side died mid-run, terminal continues"; CODE_WARNED=1; }
     fi
+  fi
+  if [ "$DESK_OK" = 1 ]; then
+    if [ "$NAMED" = 1 ]; then
+      kill -0 "$(cat "$RUNDIR/named-tunnel.pid" 2>/dev/null)" 2>/dev/null || fail "named tunnel died mid-run"
+    else
+      kill -0 "$(cat "$RUNDIR/desk-tunnel.pid" 2>/dev/null)" 2>/dev/null || { tail -n 20 "$RUNDIR/desk-tunnel.log" || true; fail "desktop tunnel died mid-run"; }
+    fi
+    kill -0 "$(cat "$RUNDIR/novnc.pid" 2>/dev/null)" 2>/dev/null || { tail -n 20 "$RUNDIR/novnc.log" || true; fail "noVNC died mid-run"; }
+    kill -0 "$(cat "$RUNDIR/xvfb.pid" 2>/dev/null)" 2>/dev/null || fail "Xvfb died mid-run"
   fi
   HEARTBEATS=$((HEARTBEATS + 1))
   REM_MIN=$(((END - SECONDS) / 60))
