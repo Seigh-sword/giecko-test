@@ -22,6 +22,7 @@ URL_TERM=""
 URL_CODE=""
 CODE_OK=0
 CODE_WARNED=0
+NAMED=0
 OSNAME="$(uname -s)"
 ARCH="amd64"; case "$(uname -m)" in arm64|aarch64) ARCH="arm64";; esac
 IS_WINDOWS=0; case "$OSNAME" in MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1;; esac
@@ -74,6 +75,7 @@ tunnel_url() {
 }
 
 qr_block() {
+  [ "$NAMED" = 1 ] && return 0
   command -v qrencode >/dev/null 2>&1 || return 0
   qrencode -t UTF8 -m 1 "$1" 2>/dev/null || true
 }
@@ -276,7 +278,7 @@ dl_code() {
     if [ "$OSNAME" = "Darwin" ]; then
       echo " trying code-server via brew..."
       brew install code-server 2>/dev/null && { CODE_BIN="$(command -v code-server)"; return 0; }
-      echo "  no macOS code-server found (experimental OS); vscode unavailable"
+      echo "  no macOS code-server found; vscode unavailable"
       return 1
     fi
     echo "  code-server API lookup failed, using pinned v$CODER_VER_FALLBACK"
@@ -507,6 +509,27 @@ wait_tunnel() {
   return 1
 }
 
+if [ -n "${CF_TUNNEL_TOKEN:-}" ]; then
+  NAMED=1
+  echo "  starting named cloudflare tunnel (hostnames come from your Cloudflare dashboard)..."
+  rm -f "$RUNDIR/named-tunnel.log" "$RUNDIR/named-tunnel.pid"
+  nohup cloudflared tunnel run --token "$CF_TUNNEL_TOKEN" --no-autoupdate > "$RUNDIR/named-tunnel.log" 2>&1 &
+  echo "$!" > "$RUNDIR/named-tunnel.pid"
+  up=0
+  for _ in {1..45}; do
+    grep -q "Registered tunnel connection" "$RUNDIR/named-tunnel.log" 2>/dev/null && { up=1; break; }
+    kill -0 "$(cat "$RUNDIR/named-tunnel.pid" 2>/dev/null)" 2>/dev/null || break
+    sleep 2
+  done
+  if [ "$up" = 1 ]; then
+    [ "$NEED_TTYD" = 1 ] && URL_TERM="named-tunnel"
+    [ "$CODE_OK" = 1 ] && URL_CODE="named-tunnel"
+    echo " named tunnel is up"
+  else
+    tail -n 10 "$RUNDIR/named-tunnel.log" 2>/dev/null || true
+    fail "named tunnel failed to connect (check the token and your Cloudflare dashboard)"
+  fi
+else
 if [ "$NEED_TTYD" = 1 ]; then
   echo "  opening terminal tunnel..."
   start_tunnel "$TERM_PORT" "$RUNDIR/term-tunnel.log" "$RUNDIR/term-tunnel.pid"
@@ -523,6 +546,7 @@ if [ "$CODE_OK" = 1 ]; then
     echo "  vscode tunnel failed, continuing terminal-only"; CODE_OK=0
   fi
 fi
+fi
 
 {
   echo "GIECKO_URL_TERM='$URL_TERM'"
@@ -537,6 +561,10 @@ fi
 BOOT_SECS=$((SECONDS - BOOT_START))
 DISP_TERM=$(pub_url "$URL_TERM")
 DISP_CODE=$(pub_url "$URL_CODE")
+if [ "$NAMED" = 1 ]; then
+  DISP_TERM="your Cloudflare hostname"
+  DISP_CODE="your Cloudflare hostname"
+fi
 LOGIN_LINE="user \`$USER\` + your workflow password"
 [ -z "$PASSWORD" ] && LOGIN_LINE="none — OPEN SESSION, anyone with the link gets in "
 cat <<EOF
@@ -575,11 +603,15 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     echo ""
     echo "| | |"
     echo "|---|---|"
-    if [ -n "$URL_TERM" ]; then
+    if [ "$NAMED" = 1 ]; then
+      [ "$NEED_TTYD" = 1 ] && echo "| **Terminal** | your Cloudflare hostname (named tunnel) |"
+    elif [ -n "$URL_TERM" ]; then
       if [ "$MASK" = 1 ]; then echo "| **Terminal** | \`$DISP_TERM\` (masked — scan the QR in the logs) |"
       else echo "| **Terminal** | [$URL_TERM]($URL_TERM) |"; fi
     fi
-    if [ -n "$URL_CODE" ]; then
+    if [ "$NAMED" = 1 ]; then
+      [ "$CODE_OK" = 1 ] && echo "| **VS Code** | your Cloudflare hostname (named tunnel) |"
+    elif [ -n "$URL_CODE" ]; then
       if [ "$MASK" = 1 ]; then echo "| **VS Code** | \`$DISP_CODE\` (masked — scan the QR in the logs) |"
       else echo "| **VS Code** | [$URL_CODE]($URL_CODE) |"; fi
     fi
@@ -589,8 +621,8 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     echo "| **Expires in** | ~${DURATION_MIN} min |"
     echo ""
     if [ "$MASK" = 0 ]; then
-      [ -n "$URL_TERM" ] && { echo "Terminal QR:"; echo '```'; qr_block "$URL_TERM"; echo '```'; }
-      [ -n "$URL_CODE" ] && { echo "VS Code QR:"; echo '```'; qr_block "$URL_CODE"; echo '```'; }
+      [ "$NAMED" != 1 ] && [ -n "$URL_TERM" ] && { echo "Terminal QR:"; echo '```'; qr_block "$URL_TERM"; echo '```'; }
+      [ "$NAMED" != 1 ] && [ -n "$URL_CODE" ] && { echo "VS Code QR:"; echo '```'; qr_block "$URL_CODE"; echo '```'; }
     fi
     echo " Save work with \`giecko save\` ·  download files with \`tsz <file>\` ·  upload with \`trz\`"
     echo " Files live on branch \`$WORK_BRANCH\`"
@@ -628,14 +660,18 @@ END=$((SECONDS + DURATION_MIN * 60))
 while [ "$SECONDS" -lt "$END" ]; do
   if [ "$NEED_TTYD" = 1 ]; then
     kill -0 "$(cat "$RUNDIR/ttyd.pid" 2>/dev/null)" 2>/dev/null || { tail -n 20 "$RUNDIR/ttyd.log" || true; fail "ttyd died mid-run"; }
-    kill -0 "$(cat "$RUNDIR/term-tunnel.pid" 2>/dev/null)" 2>/dev/null || { tail -n 20 "$RUNDIR/term-tunnel.log" || true; fail "terminal tunnel died mid-run"; }
+    if [ "$NAMED" = 1 ]; then
+      kill -0 "$(cat "$RUNDIR/named-tunnel.pid" 2>/dev/null)" 2>/dev/null || { tail -n 20 "$RUNDIR/named-tunnel.log" || true; fail "named tunnel died mid-run"; }
+    else
+      kill -0 "$(cat "$RUNDIR/term-tunnel.pid" 2>/dev/null)" 2>/dev/null || { tail -n 20 "$RUNDIR/term-tunnel.log" || true; fail "terminal tunnel died mid-run"; }
+    fi
     if [ "$USE_DISTRO" = 1 ]; then
       [ "$(docker inspect -f '{{.State.Running}}' giecko-box 2>/dev/null || echo false)" = "true" ] || fail "distro container died mid-run"
     fi
   fi
   if [ "$CODE_OK" = 1 ]; then
     if ! kill -0 "$(cat "$RUNDIR/code.pid" 2>/dev/null)" 2>/dev/null \
-       || ! kill -0 "$(cat "$RUNDIR/code-tunnel.pid" 2>/dev/null)" 2>/dev/null; then
+       || { [ "$NAMED" != 1 ] && ! kill -0 "$(cat "$RUNDIR/code-tunnel.pid" 2>/dev/null)" 2>/dev/null; }; then
       if [ "$CODE_REQUIRED" = 1 ]; then fail "vscode side died mid-run (stack=vscode)"; fi
       CODE_OK=0
       [ "$CODE_WARNED" = 0 ] && { echo "  vscode side died mid-run, terminal continues"; CODE_WARNED=1; }

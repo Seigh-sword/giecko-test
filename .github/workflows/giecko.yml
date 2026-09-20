@@ -10,7 +10,7 @@ on:
         type: choice
         options: [ide, terminal, vscode]
       os:
-        description: 'Runner OS (macos = experimental, windows = beta; docker distros unavailable there)'
+        description: 'Runner OS (docker distros are only available on ubuntu)'
         required: false
         default: 'ubuntu-latest'
         type: choice
@@ -46,6 +46,10 @@ on:
         description: 'Snapshot the session work branch every N min (0 = off)'
         required: false
         default: '15'
+      cf_token:
+        description: 'Optional: Cloudflare named-tunnel token (blank = random trycloudflare.com URL)'
+        required: false
+        default: ''
   push:
     branches: [arena/01a09a7b-giecko]
 
@@ -61,6 +65,7 @@ jobs:
     timeout-minutes: 360
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CF_TUNNEL_TOKEN: ${{ inputs.cf_token }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
