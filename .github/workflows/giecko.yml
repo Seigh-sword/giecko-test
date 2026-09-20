@@ -90,7 +90,7 @@ jobs:
           chmod +x scripts/giecko.sh scripts/giecko
           ./scripts/giecko.sh \
             "${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[noauth]') && '__BLANK__' || 'test-giecko-123') || inputs.password }}" \
-            "${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[quick]') && '0' || '10') || inputs.duration_minutes }}" \
+            "${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[d=1]') && '1' || contains(github.event.head_commit.message, '[quick]') && '0' || '10') || inputs.duration_minutes }}" \
             "${{ inputs.packages }}" \
             "${{ github.event_name == 'push' && (contains(github.event.head_commit.message, '[stack=vscode]') && 'vscode' || contains(github.event.head_commit.message, '[stack=terminal]') && 'terminal' || contains(github.event.head_commit.message, '[stack=desktop]') && 'desktop' || 'ide') || inputs.stack }}" \
             "${{ github.event_name == 'push' && '0' || inputs.autosave_minutes }}" \

@@ -162,6 +162,7 @@ _publish_report_inner() {
     echo "- url_desktop: $([ -n "$URL_DESK" ] && pub_url "$URL_DESK" || echo "NO")"
     echo "- work_branch: $WORK_BRANCH"
     echo "- versions: $(cloudflared --version 2>/dev/null | head -n 1) / $([ "$NEED_TTYD" = 1 ] && ttyd --version 2>/dev/null || echo "ttyd: n/a") / $([ "$CODE_OK" = 1 ] && "$CODE_BIN" --version 2>/dev/null | head -n 1 || echo "code-server: n/a")"
+    echo "- binaries (sha256): cloudflared=$(sha256_of "$(command -v cloudflared)") ttyd=$([ "$NEED_TTYD" = 1 ] && sha256_of "$(command -v ttyd)" || echo "n/a") code-server=$([ "$NEED_CODE" = 1 ] && sha256_of "$CODE_BIN" || echo "n/a")"
     for f in ttyd.log term-tunnel.log code-server.log code-tunnel.log distro-setup.log xvfb.log xfce.log x11vnc.log novnc.log desk-tunnel.log; do
       if [ -f "$RUNDIR/$f" ]; then
         echo ""
@@ -315,6 +316,61 @@ pip_trzsz() {
 }
 
 sys_pkgs & AP=$!
+sha256_of() {
+  if [ -n "$1" ] && [ -f "$1" ]; then
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" 2>/dev/null | awk '{print $1}'; return 0; fi
+    if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'; return 0; fi
+  fi
+  echo "n/a"
+}
+patch_novnc() {
+  [ -d "$1" ] || return 0
+  local owner="" av="" img=""
+  if [ -n "${REPO_SLUG:-}" ]; then owner="${REPO_SLUG%%/*}"; fi
+  if [ -n "$owner" ]; then
+    av=$(curl -s -m 10 -L "https://github.com/${owner}.png?size=96" 2>/dev/null | base64 2>/dev/null | tr -d "\n\r" )
+  fi
+  if [ -n "$av" ]; then
+    img="<image href=\"data:image/png;base64,${av}\" x=\"8\" y=\"8\" width=\"48\" height=\"48\" clip-path=\"url(#c)\"/>"
+  fi
+  cat > "$RUNDIR/favicon.svg" <<EOF
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<clipPath id="c"><circle cx="32" cy="32" r="24"/></clipPath>
+<rect width="64" height="64" fill="#0B0F14"/>
+${img}
+<circle cx="32" cy="32" r="24" fill="none" stroke="#4ADE80" stroke-width="4"/>
+<text x="34" y="18" font-size="16">&#x1F98E;</text>
+</svg>
+EOF
+  if [ -w "$1" ]; then
+    cp -f "$RUNDIR/favicon.svg" "$1/favicon.svg" || return 0
+  else
+    priv cp -f "$RUNDIR/favicon.svg" "$1/favicon.svg" 2>/dev/null || return 0
+  fi
+  local pyn=python3
+  command -v python3 >/dev/null 2>&1 || pyn=python
+  cp -f "$1/vnc.html" "$RUNDIR/vnc.html" 2>/dev/null || return 0
+  "$pyn" - "$RUNDIR/vnc.html" <<'PYEOF' 2>/dev/null || return 0
+import re, sys
+p = sys.argv[1]
+try:
+    t = open(p, encoding="utf8").read()
+except Exception:
+    sys.exit(0)
+t2 = re.sub(r'<link rel="icon"[^>]*>', '<link rel="icon" href="favicon.svg" type="image/svg+xml">', t, count=1)
+if t2 == t and "<head>" in t2:
+    t2 = t2.replace("<head>", '<head><link rel="icon" href="favicon.svg" type="image/svg+xml">', 1)
+t2 = re.sub(r"<title>[^<]*</title>", "<title>Giecko Desktop</title>", t2, count=1)
+if t2 != t:
+    open(p, "w", encoding="utf8").write(t2)
+PYEOF
+  if [ -w "$1" ]; then
+    cp -f "$RUNDIR/vnc.html" "$1/vnc.html" || return 0
+  else
+    priv cp -f "$RUNDIR/vnc.html" "$1/vnc.html" 2>/dev/null || return 0
+  fi
+  echo "  favicon patched"
+}
 dl_cloudflared & P1=$!
 dl_ttyd & P2=$!
 dl_code & P3=$!
@@ -339,6 +395,10 @@ if [ "$NEED_CODE" = 1 ] && [ "$CODE_DL_OK" = 1 ] && [ -z "$CODE_BIN" ]; then
   [ -n "$CODE_BIN" ] && [ -x "$CODE_BIN" ] || fail "code-server binary not found after extract"
   "$CODE_BIN" --version | head -n 1
 fi
+echo "  binary checksums (sha256):"
+echo "    cloudflared: $(sha256_of "$(command -v cloudflared)")"
+if [ "$NEED_TTYD" = 1 ]; then echo "    ttyd: $(sha256_of "$(command -v ttyd)")"; fi
+if [ "$NEED_CODE" = 1 ]; then echo "    code-server: $(sha256_of "$CODE_BIN")"; fi
 if [ "$NEED_CODE" = 1 ] && { [ "$CODE_DL_OK" = 0 ] || [ -z "$CODE_BIN" ]; }; then
   if [ "$CODE_REQUIRED" = 1 ]; then fail "code-server unavailable but stack=vscode needs it"; fi
   echo "  code-server unavailable, continuing terminal-only"
@@ -603,6 +663,7 @@ if [ "$STACK" = "desktop" ]; then
   else
     fail "desktop mode is not supported on this OS"
   fi
+  patch_novnc "$NOVNC_DIR" || echo "  favicon patch skipped"
   nohup "${WS_CMD[@]}" --web "$NOVNC_DIR" "$DESK_PORT" "localhost:$VNC_PORT" > "$RUNDIR/novnc.log" 2>&1 &
   echo "$!" > "$RUNDIR/novnc.pid"
   up=0
@@ -826,7 +887,9 @@ while [ "$SECONDS" -lt "$END" ]; do
       kill -0 "$(cat "$RUNDIR/desk-tunnel.pid" 2>/dev/null)" 2>/dev/null || { tail -n 20 "$RUNDIR/desk-tunnel.log" || true; fail "desktop tunnel died mid-run"; }
     fi
     kill -0 "$(cat "$RUNDIR/novnc.pid" 2>/dev/null)" 2>/dev/null || { tail -n 20 "$RUNDIR/novnc.log" || true; fail "noVNC died mid-run"; }
-    kill -0 "$(cat "$RUNDIR/xvfb.pid" 2>/dev/null)" 2>/dev/null || fail "Xvfb died mid-run"
+    if [ "$OSNAME" = "Linux" ]; then
+      kill -0 "$(cat "$RUNDIR/xvfb.pid" 2>/dev/null)" 2>/dev/null || fail "Xvfb died mid-run"
+    fi
   fi
   HEARTBEATS=$((HEARTBEATS + 1))
   REM_MIN=$(((END - SECONDS) / 60))
