@@ -1,0 +1,17 @@
+README.md
+pyproject.toml
+localchat/__init__.py
+localchat/__main__.py
+localchat/chat.py
+localchat/cli.py
+localchat/config.py
+localchat/download.py
+localchat/model.py
+localchat/templates.py
+localchat/utils.py
+localchat.egg-info/PKG-INFO
+localchat.egg-info/SOURCES.txt
+localchat.egg-info/dependency_links.txt
+localchat.egg-info/entry_points.txt
+localchat.egg-info/requires.txt
+localchat.egg-info/top_level.txt

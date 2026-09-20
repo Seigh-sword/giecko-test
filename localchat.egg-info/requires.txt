@@ -1,0 +1,14 @@
+llama-cpp-python>=0.3.0
+click>=8.0
+rich>=13.0
+requests>=2.28
+httpx>=0.24
+numpy>=1.20
+diskcache>=5.6
+
+[cuda]
+llama-cpp-python[cuda]>=0.3.0
+
+[dev]
+pytest
+pytest-cov

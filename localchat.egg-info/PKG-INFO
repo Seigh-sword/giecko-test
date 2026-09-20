@@ -1,0 +1,124 @@
+Metadata-Version: 2.4
+Name: localchat
+Version: 0.1.0
+Summary: Local AI assistant for running small language models (LLaMA2, Qwen2, etc.)
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: llama-cpp-python>=0.3.0
+Requires-Dist: click>=8.0
+Requires-Dist: rich>=13.0
+Requires-Dist: requests>=2.28
+Requires-Dist: httpx>=0.24
+Requires-Dist: numpy>=1.20
+Requires-Dist: diskcache>=5.6
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Provides-Extra: cuda
+Requires-Dist: llama-cpp-python[cuda]>=0.3.0; extra == "cuda"
+
+# localchat
+
+A local AI assistant for running small language models (LLaMA2, Qwen2, Mistral, Phi, Gemma, etc.) in your terminal. Like Claude Code, but all models run on your own hardware.
+
+## Features
+
+- **Chat with local models** - Interactive conversation with GGUF-format LLMs
+- **Small models first** - Optimized for models like LLaMA2 7B, Qwen2 1.5B-7B, Phi-3, Gemma 2B
+- **Model management** - Download models from HuggingFace, manage local model library
+- **Conversation persistence** - Save and load chat history
+- **Streaming output** - Real-time token streaming during generation
+- **Multiple model formats** - Supports LLaMA2, Qwen2, ChatGLM, and custom chat templates
+- **Configurable** - Temperature, top-p, top-k, repeat penalty, context size
+
+## Installation
+
+```bash
+pip install -e .
+```
+
+For CUDA support:
+```bash
+pip install -e .[cuda]
+```
+
+## Quick Start
+
+### Download a model
+
+```bash
+localchat download Qwen/Qwen2-1.5B-Chat
+localchat download meta-llama/Llama-2-7b-chat-hf
+localchat download microsoft/Phi-3-mini-4k-instruct
+```
+
+### List downloaded models
+
+```bash
+localchat models
+```
+
+### Start a chat
+
+```bash
+localchat chat
+localchat chat /path/to/model.gguf
+localchat chat --system "You are a helpful coding assistant."
+```
+
+### Generate a single response
+
+```bash
+localchat generate model.gguf "Hello, how are you?"
+```
+
+### Evaluate with timing info
+
+```bash
+localchat eval model.gguf "Write a Python function to sort a list"
+```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `localchat chat [MODEL]` | Start interactive chat session |
+| `localchat generate MODEL PROMPT` | Generate a single response |
+| `localchat eval MODEL PROMPT` | Generate with timing info |
+| `localchat download MODEL_ID` | Download from HuggingFace |
+| `localchat models` | List downloaded models |
+| `localchat info MODEL` | Show model information |
+| `localchat template NAME` | Show chat template for model |
+| `localchat config` | View/edit configuration |
+| `localchat version` | Show version info |
+
+## Chat Commands
+
+Inside the chat session, you can use:
+
+| Command | Description |
+|---------|-------------|
+| `/clear` | Clear conversation history |
+| `/history` | Show conversation history |
+| `/save [name]` | Save conversation |
+| `/load <name>` | Load conversation |
+| `/model [path]` | Switch model or list models |
+| `/exit` | Exit |
+
+## Configuration
+
+Config is stored at `~/.localchat/config.json`. You can modify it with:
+
+```bash
+localchat config --set temperature 0.5
+localchat config --list
+```
+
+## Model Directory
+
+Models are stored in `~/.localchat/models/` by default. Configure via:
+
+```bash
+localchat config --set models_dir /path/to/models
+```
