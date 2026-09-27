@@ -1,118 +1,102 @@
 #!/usr/bin/env bash
 
 art=$(cat <<'EOF'
-         .....                                   ....         
-        ..:;x....                            ....+;;..        
-        .;....++&;.                        ...;;....;.        
-        .x.   ..;x;..                    ...+;...  .;..       
-        .+.    ...+xx..                ...x;;..    ..x.       
-       ..+.      ..+;;..  ..........  ..+;;;..     ..+.       
-        .+.       ..++xx$$$x+++;;+;;...;++..       .;:.       
-        .;.        .xx;+++;+;;;;;+++++xxxx;        .x..       
-        .;..     ...;xxx++xxxxxxxx++xxxx++...     $.:.        
-        ..+..  ...;;xxxxxxxxxxxxxxxxxxxxxx+;...   .;..        
-         .;;. ..;x+xxxxxxxxxxxxxxxxxxxxxxxxx+;..x;:;.         
-          .+;;;+xxxxxxxxx+++++xxxxx++xxxxx++xxx;::;..         
-          .;xxxx++xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.          
-         ..xxxxxxx;:.....;xxxxx++xxxx......+x+xxxxx..         
-         .;xxxxxxxx&    ...:xxxxxx+...    ;x+xxxxxx;..        
-       ..;xxxxxxxx+;...   &.xxxx+x..    ...xxxxxxxxx+..       
-     ...;x;;......:++;.... .xxxxxx.  ...$x;:.....:;:;;...     
-      ...:x$&&&&&&&;..;+x.:x+xxxxx. ..x;;:x$&&&&&$&XX;...     
-       ....;xxx+xxX&&&&.;;;xxxxXxx...+;:&&&$xxxx+;;:...       
-          &.......xxxxX&;:;xxxxxxxxx;:&&Xxxxx.......          
-                 ....xxX$&.;xxxxxx;:&&XxxX....                
-                    .;;&xX&x;xxxx;+&Xxx...                    
-              .        ...x&+:;;:X&x...        .              
-             ..          ............   .       ..            
-           ...      .....            .....      ...           
-          ...      ..xxx......  ......xxxX..     .+..         
-        .....     ..xxxxxxxx+:...;xXxxxxxx;.      .x..        
-       ..Xx.     ..X$xxxxxxxxxxXxxxxxxxxxxxx.     ..x...      
-     ..xXx..    ..xx+xxxxxxxxxxxxxxxxxxxxxxx;.     .x$X..     
-    ..xx$x.    ..xxxxxxxxxxxxxxxxxxxxxxxxxxxXx.    .xXxX..    
-   ..x$xxx.    .xXxxxxxxxxxxxxxxxxxxxxxxXxxxXx.    .:XxxX..   
-  ..xXxxX;.   ..xxxxxxxxxxxxxxxxxxxxxxxXxxxxx$;.    .xxXXX..  
-  .x$xx$X;.   .xXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.    .XxXX$$.. 
- .+$xXX$x:.   .xXxxxxxxxxxxxxxxxxXXxxxxxxXxXxxX.    .X&$XX$$..
-..$$$X$$...   .xXxxxxxxxxxxxxxxxxxxxXXxxxxxXXxX:.   .+&&xx$$x.
-.+$x$X:.. .   .x$xxXXXXXXxxXxxxxxxxxxxxxxX$xxx$$.    ...$X$$x.
-.X$X$:.       .xXxxXxxxxxxxXxXXXxXxxXxxxxXXXxXX:       ..X$$$.
-.$&$..        .xx$xxxXXXXXXXxxxxxxXxxxX$xXXXXXX.        ..:$&.
-.X;.           .XxXXxXXXXxxXXXXX$X$X$XXXxxxXX$..          .;&.
-...            .x&$XX$xxxXX$$$XXXXxxxx$$XXxx$x.            ...
-                ..$XXXxxXxxxxxxxxxXXXxxXXX$$$..               
-                 ....x$$$$$$$$$$$$XXX$XX$:....                
-                     ....xXXXXXXXXXX&;...X                    
-                 .....   ..x&&$$$&$;.    ....                 
-              ...x&&&;..   ........   ..:X&&$...              
-             .............          .............             
+        ...                              ....        
+       ........                      ......:..       
+       ..  ...x...                 ...;..   ;;       
+      ...    ...x:..             ...x...    :$       
+      ...      ..xx:..............xx..      :$       
+       ..       :xxxxxxxxxxxxxxxxxxx:      .+:       
+       .x.    ...xXXXXXxxxxxxxxxXXxX...    .x.       
+       .... ...xxxxxxxxXXXXXxXXxxxxXxx... .+..       
+        .x:..xxxxxxXxxxxxxxxxxxXxxXxxxxx.....        
+         xxxxxxxxxxxxxXxXxXXXxxXXXxxxxxxXXX.         
+        .xXXxxxxx.....xxxxxxxx......xxxxxxx..        
+       .:XxxXXXxx+    ..XxXxX..    .XXXxxXXx..       
+     ..:x+;;++xxx....  .Xx$XX.  ...:xxxxxxxXX&x.     
+    ..;+;&&&&$&;x+xx:..;xXxxx;..:;;;;+&&&&x;;;$.     
+      .....+xX$&&&&;+xxxxx$xxxxx+x $&&$Xxx:...&      
+           .....;X$&&xxXXxxxxxx:&Xxx:.....           
+                ...;$&;xxXXXxx&&$:..                 
+            .      :..+&x::.x&;..                    
+          ..      .   .... ...;   .      .           
+         ..     ..:...         .....     ...         
+       ....    ..$XxXx........:$X$$X..    .:..       
+      .;$.    .:$$$XX$$XXX$$$$XXXxX$X:.   .:X..      
+    ..x$:.   ..xXxxxxxxxXXXXxXxxXxx$$x.    .X&&x.    
+   ..$$$.    .$Xx$$$$$$$$xxxXxXXXxXXX$x.   .:$X$..   
+  .:$X$x.   .:$XXXXXXXXXXXXXXXX$$$$XXX$..   .XX$$:.  
+ .:&$$$x.   .X$$$$$XX$X$$$$$$$XXXXXXXX$x.   .$$$$&:. 
+..&$$$&X.   .$$xXx$XXXXXXXX$XXXXXXXXX$$X.   .&&$$$&:.
+.$$$$x...   .$XX$XX$$$$XXXXX$$$$X$X$XX$$.   ...x$&$$.
+.&&&+.      .$$$$$$XXXX$$$$$XXX$$$XX$X$$.      .;&&$.
+.&x.        .$&$$$$$$$$$$$$$$$$$$$$$$$$;.       .x&&.
+.+.         .;&$$$XX$$$$$$$$$$$$$$$xx$$.          ;x.
+             .;&$$$$$$$$$$$$$$$$$$$$$&;.           . 
+              ....x&&$&$$$$$$$&$$$x:...              
+                  ;;..+&$$$$$$x:.++                  
+             .....;:  ........:  ;;.....             
+           .......:...         ...........            
 EOF
 )
 
-while IFS= read -r line; do
-    printf '%s\n' "$line"
-done <<< "$art" | awk '
+printf '%s\n' "$art" | awk '
 BEGIN {
     reset = "\033[0m"
-    cyan1 = "\033[38;2;105;234;232m"
-    light = "\033[38;2;177;239;245m"
-    white = "\033[38;2;224;250;252m"
-    shine = "\033[38;2;143;244;245m"
-    dark  = "\033[38;2;16;172;218m"
+    white = "\033[38;2;226;250;252m"
+    muzzle = "\033[38;2;190;243;247m"
+    glow = "\033[38;2;125;239;240m"
+    shadow = "\033[38;2;13;169;222m"
 }
 {
     row = NR
-    line = $0
 
-    if (row <= 23) {
-        t = (row - 1) / 22
-        r = int(105 + (50-105)*t)
-        g = int(234 + (222-234)*t)
-        b = int(232 + (235-232)*t)
+    if (row <= 18) {
+        t = (row - 1) / 17
+        r = int(105 - 45 * t)
+        g = int(235 - 10 * t)
+        b = int(232 + 3 * t)
     } else {
-        t = (row - 23) / 23
-        if (t > 1) t = 1
-        r = int(50 + (23-50)*t)
-        g = int(222 + (187-222)*t)
+        t = (row - 18) / 18
+        r = int(60 - 38 * t)
+        g = int(225 - 37 * t)
         b = 235
     }
 
-    base = sprintf("\033[38;2;%d;%d;%dm",r,g,b)
+    base = sprintf("\033[38;2;%d;%d;%dm", r, g, b)
 
-    for (i=1; i<=length(line); i++) {
-        c = substr(line,i,1)
+    for (i = 1; i <= length($0); i++) {
+        c = substr($0, i, 1)
         color = base
 
-        if (row >= 17 && row <= 22) {
-            if (i >= 8 && i <= 27)
-                color = light
-            if (i >= 39 && i <= 57)
-                color = light
+        if (row >= 13 && row <= 17) {
+            if ((i >= 5 && i <= 20) || (i >= 35 && i <= 50)) {
+                color = muzzle
+            }
         }
 
-        if (row >= 20 && row <= 24 && i >= 27 && i <= 40)
+        if (row >= 15 && row <= 19 && i >= 18 && i <= 37) {
             color = white
+        }
 
-        if (c == "X" && color == base)
-            color = shine
+        if (color == base) {
+            if (c == "X") {
+                color = glow
+            } else if (c == "$") {
+                color = shadow
+            } else if (c == "&") {
+                color = white
+            } else if (c == "." || c == ":") {
+                rr = r + 14
+                gg = g + 11
+                bb = b + 7
 
-        if (c == "$" && color == base)
-            color = dark
+                if (rr > 255) rr = 255
+                if (gg > 255) gg = 255
+                if (bb > 255) bb = 255
 
-        if (c == "&" && color == base)
-            color = cyan1
-
-        if ((c == "." || c == ":") && color == base) {
-            rr = r + 12
-            gg = g + 10
-            bb = b + 8
-
-            if (rr > 255) rr=255
-            if (gg > 255) gg=255
-            if (bb > 255) bb=255
-
-            color=sprintf("\033[38;2;%d;%d;%dm",rr,gg,bb)
+                color = sprintf("\033[38;2;%d;%d;%dm", rr, gg, bb)
+            }
         }
 
         printf "%s%s", color, c
