@@ -623,7 +623,14 @@ SESS_USER_OK=0
 SESS_USER="$USER"
 SESS_HOME="$HOME"
 if command -v sudo >/dev/null 2>&1; then
-  as_user() { sudo -u "$1" -H env "${@:2}"; }
+  as_user() {
+    sudo -u "$1" -H env -u XDG_RUNTIME_DIR \
+      HOME="${SESS_HOME:-/home/$1}" \
+      XDG_CONFIG_HOME="${SESS_HOME:-/home/$1}/.config" \
+      XDG_DATA_HOME="${SESS_HOME:-/home/$1}/.local/share" \
+      XDG_CACHE_HOME="${SESS_HOME:-/home/$1}/.cache" \
+      "${@:2}"
+  }
 else
   as_user() { false; }
 fi
@@ -839,13 +846,13 @@ install_shell_candy || true
 WORK_BRANCH="giecko-work/run-$RUN_ID"
 WORKDIR="${RUNNER_TEMP:-/tmp}/giecko-work"
 [ "$IS_WINDOWS" = 1 ] && WORKDIR="/tmp/giecko-work"
-echo "\U0001f33f work branch: $WORK_BRANCH"
+echo "🍃 work branch: $WORK_BRANCH"
 if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_TOKEN:-}" ] && [ -n "$REPO_SLUG" ]; then
   rm -rf "$WORKDIR"
   _AUTH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO_SLUG}.git"
   if git clone -q --depth 1 "$_AUTH_URL" "$WORKDIR" 2>"$RUNDIR/work-clone.log" \
      && ( cd "$WORKDIR" && git checkout -q -b "$WORK_BRANCH" && git push -q -f -u origin "$WORK_BRANCH" ) 2>>"$RUNDIR/work-clone.log"; then
-    echo "\u2705 work branch ready"
+    echo "✅ work branch ready"
   else
     tail -n 5 "$RUNDIR/work-clone.log" 2>/dev/null | sed "s/${GITHUB_TOKEN}/REDACTED/g" || true
     fail "work branch setup failed"
@@ -1324,6 +1331,8 @@ while [ "$SECONDS" -lt "$END" ]; do
   if [ "$CODE_OK" = 1 ]; then
     if ! kill -0 "$(cat "$RUNDIR/code.pid" 2>/dev/null)" 2>/dev/null \
        || { [ "$NAMED" != 1 ] && ! kill -0 "$(cat "$RUNDIR/code-tunnel.pid" 2>/dev/null)" 2>/dev/null; }; then
+      echo "  vscode side log tail:"
+      tail -n 20 "$RUNDIR/code-server.log" 2>/dev/null || true
       if [ "$CODE_REQUIRED" = 1 ]; then fail "vscode side died mid-run (stack=vscode)"; fi
       CODE_OK=0
       [ "$CODE_WARNED" = 0 ] && { echo "  vscode side died mid-run, terminal continues"; CODE_WARNED=1; }
