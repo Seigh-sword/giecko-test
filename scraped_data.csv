@@ -1,0 +1,4 @@
+url,status,title
+https://httpbin.org/html,200,No Title
+https://example.com,200,Example Domain
+https://www.python.org,200,Welcome to Python.org
