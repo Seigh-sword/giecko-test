@@ -20,6 +20,7 @@ TERM_PORT=7681
 CODE_PORT=8080
 DESK_PORT=6080
 VNC_PORT=5900
+CONS_PORT=7900
 DESK_DISPLAY=99
 RUN_ID="${GITHUB_RUN_ID:-local}"
 REPO_SLUG="${GITHUB_REPOSITORY:-}"
@@ -28,6 +29,8 @@ HEARTBEATS=0
 URL_TERM=""
 URL_CODE=""
 URL_DESK=""
+URL_CONS=""
+CONS_OK=0
 CODE_OK=0
 CODE_WARNED=0
 NAMED=0
@@ -42,6 +45,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNDIR="$PWD/.giecko"
 CODER_VER_FALLBACK="4.137.0"
 mkdir -p "$RUNDIR"
+if command -v tee >/dev/null 2>&1; then
+  exec > >(tee -a "$RUNDIR/boot.log") 2>&1
+fi
 
 case "$DURATION_MIN" in ''|*[!0-9]*) echo "  bad duration '$DURATION_MIN', using 180"; DURATION_MIN=180;; esac
 case "$STACK" in terminal|vscode|ide|desktop) ;; *) echo "  unknown stack '$STACK', using ide"; STACK="ide";; esac
@@ -169,11 +175,12 @@ _publish_report_inner() {
     echo "- url_terminal: $([ -n "$URL_TERM" ] && pub_url "$URL_TERM" || echo "NO")"
     echo "- url_code: $([ -n "$URL_CODE" ] && pub_url "$URL_CODE" || echo "NO")"
     echo "- url_desktop: $([ -n "$URL_DESK" ] && pub_url "$URL_DESK" || echo "NO")"
+    echo "- url_console: $([ -n "$URL_CONS" ] && pub_url "$URL_CONS" || echo "NO")"
     echo "- work_branch: $WORK_BRANCH"
     echo "- versions: $(cloudflared --version 2>/dev/null | head -n 1) / $([ "$NEED_TTYD" = 1 ] && ttyd --version 2>/dev/null || echo "ttyd: n/a") / $([ "$CODE_OK" = 1 ] && "$CODE_BIN" --version 2>/dev/null | head -n 1 || echo "code-server: n/a")"
     echo "- binaries (sha256): cloudflared=$(sha256_of "$(command -v cloudflared)") ttyd=$([ "$NEED_TTYD" = 1 ] && sha256_of "$(command -v ttyd)" || echo "n/a") code-server=$([ "$NEED_CODE" = 1 ] && sha256_of "$CODE_BIN" || echo "n/a")"
     echo "- vnc_auth: ${VNC_AUTH:-not run}"
-    for f in ttyd.log term-tunnel.log code-server.log code-tunnel.log distro-setup.log xvfb.log xfce.log x11vnc.log novnc.log desk-tunnel.log; do
+    for f in ttyd.log term-tunnel.log code-server.log code-tunnel.log cons-tunnel.log gieckovnc.log distro-setup.log xvfb.log xfce.log x11vnc.log novnc.log desk-tunnel.log; do
       if [ -f "$RUNDIR/$f" ]; then
         echo ""
         echo "## $f (tail, redacted)"
@@ -956,6 +963,37 @@ if [ "$DISTRO" != "runner" ]; then
   fi
 fi
 
+start_console() {
+  [ "$IS_WINDOWS" = 0 ] || { echo "  gieckoVNC console needs unix, skipped on windows"; return 0; }
+  command -v python3 >/dev/null 2>&1 || { echo "  no python3, gieckoVNC console skipped"; return 0; }
+  rm -f "$RUNDIR"/gieckovnc.log "$RUNDIR/gieckovnc.pid"
+  local cuser="" cauth=""
+  [ "$SESS_USER_OK" = 1 ] && cuser="$USER"
+  [ -n "$PASSWORD" ] && cauth="$USER:$PASSWORD"
+  GIECKO_CONSOLE_PORT="$CONS_PORT" \
+  GIECKO_CONSOLE_RUNDIR="$RUNDIR" \
+  GIECKO_CONSOLE_ICON="$SCRIPT_DIR/../assets/icons/gecko-32.png" \
+  GIECKO_CONSOLE_AUTH="$cauth" \
+  GIECKO_CONSOLE_USER="$cuser" \
+  GIECKO_CONSOLE_OWNER="$(id -un)" \
+  GIECKO_CONSOLE_DISTRO="$USE_DISTRO" \
+  GIECKO_CONSOLE_RUN="$RUN_ID" \
+  GIECKO_CONSOLE_REGION="$REGION" \
+  GIECKO_CONSOLE_STACK="$STACK" \
+  GIECKO_CONSOLE_DISTRO_NAME="$DISTRO_EFF" \
+  GIECKO_CONSOLE_BRANCH="$WORK_BRANCH" \
+  GIECKO_CONSOLE_END="$(( $(date +%s) + DURATION_MIN * 60 - SECONDS ))" \
+    nohup python3 "$SCRIPT_DIR/giecko-vnc.py" > "$RUNDIR/gieckovnc.log" 2>&1 &
+  echo "$!" > "$RUNDIR/gieckovnc.pid"
+  echo " gieckoVNC console starting on :$CONS_PORT (always on, survives the shell)"
+}
+start_console || true
+if [ -f "$RUNDIR/gieckovnc.pid" ]; then
+  up=0
+  for _ in {1..15}; do http_up "$CONS_PORT" && { up=1; break; }; sleep 1; done
+  if [ "$up" = 1 ]; then CONS_OK=1; echo " gieckoVNC console is up"; else echo "  gieckoVNC console didn't start:"; tail -n 5 "$RUNDIR/gieckovnc.log" 2>/dev/null || true; fi
+fi
+
 if [ "$NEED_TTYD" = 1 ]; then
   if [ "$USE_DISTRO" = 1 ]; then
     SHELL_CMD=(docker exec -it -e TERM=xterm-256color giecko-box "${CONTAINER_SHELL[@]}")
@@ -1143,6 +1181,7 @@ if [ -n "${CF_TUNNEL_TOKEN:-}" ]; then
     [ "$NEED_TTYD" = 1 ] && URL_TERM="named-tunnel"
     [ "$CODE_OK" = 1 ] && URL_CODE="named-tunnel"
     [ "$DESK_OK" = 1 ] && URL_DESK="named-tunnel"
+    [ "$CONS_OK" = 1 ] && URL_CONS="named-tunnel"
     echo " named tunnel is up"
   else
     tail -n 10 "$RUNDIR/named-tunnel.log" 2>/dev/null || true
@@ -1167,6 +1206,16 @@ if [ "$CODE_OK" = 1 ]; then
 fi
 fi
 
+if [ "$CONS_OK" = 1 ]; then
+  echo "  opening gieckoVNC console tunnel..."
+  start_tunnel "$CONS_PORT" "$RUNDIR/cons-tunnel.log" "$RUNDIR/cons-tunnel.pid"
+  URL_CONS=$(wait_tunnel "$RUNDIR/cons-tunnel.log" "$RUNDIR/cons-tunnel.pid" || true)
+  if [ -z "$URL_CONS" ]; then
+    echo "  console tunnel failed, continuing without it"
+    CONS_OK=0
+  fi
+fi
+
 if [ "$DESK_OK" = 1 ]; then
   echo "  opening desktop tunnel..."
   start_tunnel "$DESK_PORT" "$RUNDIR/desk-tunnel.log" "$RUNDIR/desk-tunnel.pid"
@@ -1180,6 +1229,7 @@ END_EPOCH=$(( $(date +%s) + DURATION_MIN * 60 - SECONDS ))
   echo "GIECKO_URL_TERM='$URL_TERM'"
   echo "GIECKO_URL_CODE='$URL_CODE'"
   echo "GIECKO_URL_DESK='$URL_DESK'"
+  echo "GIECKO_URL_CONSOLE='$URL_CONS'"
   echo "GIECKO_USER='$USER'"
   echo "GIECKO_RUN_ID='$RUN_ID'"
   echo "GIECKO_REGION='$REGION'"
@@ -1196,10 +1246,12 @@ END_EPOCH=$(( $(date +%s) + DURATION_MIN * 60 - SECONDS ))
 DISP_TERM=$(pub_url "$URL_TERM")
 DISP_CODE=$(pub_url "$URL_CODE")
 DISP_DESK=$(pub_url "$URL_DESK")
+DISP_CONS=$(pub_url "$URL_CONS")
 if [ "$NAMED" = 1 ]; then
   DISP_TERM="your Cloudflare hostname"
   DISP_CODE="your Cloudflare hostname"
   DISP_DESK="your Cloudflare hostname"
+  DISP_CONS="your Cloudflare hostname"
 fi
 LOGIN_LINE="user \`$USER\` + your workflow password"
 [ -z "$PASSWORD" ] && LOGIN_LINE="none — OPEN SESSION, anyone with the link gets in "
@@ -1212,6 +1264,7 @@ EOF
 [ -n "$URL_TERM" ] && echo "    terminal: $DISP_TERM"
 [ -n "$URL_CODE" ] && echo "   vscode:    $DISP_CODE"
 [ -n "$URL_DESK" ] && echo "   desktop:   $DISP_DESK"
+[ -n "$URL_CONS" ] && echo "   console:   $DISP_CONS (gieckoVNC: always-on machine view)"
 if [ -n "$URL_DESK" ] && [ "$OSNAME" = "Darwin" ]; then
   if [ -n "$PASSWORD" ]; then
     echo "   desktop login: \`$USER\` + the session password (macOS account)"
@@ -1241,6 +1294,10 @@ if [ -n "$URL_DESK" ]; then
   echo " desktop QR (square — scan it):"
   qr_block "$URL_DESK"
 fi
+if [ -n "$URL_CONS" ]; then
+  echo " console QR (square — scan it):"
+  qr_block "$URL_CONS"
+fi
 [ "$MASK" = 1 ] && echo " mask is ON: hostnames hidden above; the QR codes still carry the real URLs."
 echo " code feels laggy in raw terminal? Use the vscode URL — the editor types instantly."
 echo ""
@@ -1269,6 +1326,10 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
       if [ "$MASK" = 1 ]; then echo "| **Desktop** | \`$DISP_DESK\` (masked — scan the QR in the logs) |"
       else echo "| **Desktop** | [open desktop]($URL_DESK) |"; fi
     fi
+    if [ -n "$URL_CONS" ]; then
+      if [ "$MASK" = 1 ]; then echo "| **Console** | \`$DISP_CONS\` (masked — scan the QR in the logs) |"
+      else echo "| **Console** | [$URL_CONS]($URL_CONS) · gieckoVNC |"; fi
+    fi
     echo "| **Login** | $LOGIN_LINE |"
     echo "| **Region** | \`$REGION\` |"
     echo "| **Stack** | \`$STACK\` on \`$DISTRO_EFF\` ($OSNAME) |"
@@ -1287,6 +1348,7 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
   echo "url=$URL_TERM" >> "$GITHUB_OUTPUT"
   [ -n "$URL_CODE" ] && echo "url_code=$URL_CODE" >> "$GITHUB_OUTPUT"
   [ -n "$URL_DESK" ] && echo "url_desk=$URL_DESK" >> "$GITHUB_OUTPUT"
+  [ -n "$URL_CONS" ] && echo "url_console=$URL_CONS" >> "$GITHUB_OUTPUT"
 fi
 
 publish_report live "booted in ${BOOT_SECS}s" || true
@@ -1347,6 +1409,14 @@ while [ "$SECONDS" -lt "$END" ]; do
     kill -0 "$(cat "$RUNDIR/novnc.pid" 2>/dev/null)" 2>/dev/null || { tail -n 20 "$RUNDIR/novnc.log" || true; fail "noVNC died mid-run"; }
     if [ "$OSNAME" = "Linux" ]; then
       kill -0 "$(cat "$RUNDIR/xvfb.pid" 2>/dev/null)" 2>/dev/null || fail "Xvfb died mid-run"
+    fi
+  fi
+  if [ "$CONS_OK" = 1 ]; then
+    if ! kill -0 "$(cat "$RUNDIR/gieckovnc.pid" 2>/dev/null)" 2>/dev/null; then
+      echo "  gieckoVNC console died, restarting it"
+      start_console || true
+      sleep 2
+      http_up "$CONS_PORT" || { echo "  gieckoVNC restart failed, continuing without console"; CONS_OK=0; }
     fi
   fi
   HEARTBEATS=$((HEARTBEATS + 1))

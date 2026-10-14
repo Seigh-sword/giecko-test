@@ -59,6 +59,7 @@ cmd_urls() {
   echo "  terminal: ${GIECKO_URL_TERM:-"(see the Actions run summary)"}"
   [ -n "${GIECKO_URL_CODE:-}" ] && echo " vscode:    $GIECKO_URL_CODE"
   [ -n "${GIECKO_URL_DESK:-}" ] && echo " desktop:   $GIECKO_URL_DESK"
+  [ -n "${GIECKO_URL_CONSOLE:-}" ] && echo " console:   $GIECKO_URL_CONSOLE (gieckoVNC)"
 }
 
 cmd_save() {
