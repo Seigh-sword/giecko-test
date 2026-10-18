@@ -95,10 +95,23 @@ function Start-Procx([string]$File, [string[]]$ProcArgs, [string]$Name) {
   return $p
 }
 
+function Get-ProcLog([string]$Name, [int]$Tail = 0) {
+  $out = @()
+  foreach ($f in @((Join-Path $RunDir "$Name.log"), (Join-Path $RunDir "$Name.err.log"))) {
+    if (Test-Path $f) {
+      if ($Tail -gt 0) { $out += Get-Content $f -Tail $Tail -ErrorAction SilentlyContinue }
+      else { $out += Get-Content $f -ErrorAction SilentlyContinue }
+    }
+  }
+  return ($out -join "`n")
+}
+
 function Tunnel-Url([string]$Log) {
-  if (Test-Path $Log) {
-    $m = Select-String -Path $Log -Pattern 'https://[A-Za-z0-9.-]+\.trycloudflare\.com' | Select-Object -First 1
-    if ($m) { return $m.Matches[0].Value }
+  foreach ($f in @($Log, ($Log -replace '\.log$', '.err.log'))) {
+    if (Test-Path $f) {
+      $m = Select-String -Path $f -Pattern 'https://[A-Za-z0-9.-]+\.trycloudflare\.com' | Select-Object -First 1
+      if ($m) { return $m.Matches[0].Value }
+    }
   }
   return ""
 }
@@ -171,7 +184,7 @@ function Publish-Report([string]$Status, [string]$Note) {
   $body += "- work_branch: $WorkBranch"
   $body += "- binaries (sha256): cloudflared=$(Sha256-Of (Join-Path $BinDir 'cloudflared.exe')) ttyd=$(if ($NeedTtyd) { Sha256-Of (Join-Path $BinDir 'ttyd.exe') } else { 'n/a' }) code-server=n/a"
   $body += "- vnc_auth: $VncAuth"
-  foreach ($name in @("ttyd", "term-tunnel", "code-server", "code-tunnel", "novnc", "desk-tunnel", "named-tunnel")) {
+  foreach ($name in @("ttyd", "ttyd.err", "term-tunnel", "term-tunnel.err", "code-server", "code-server.err", "code-tunnel", "code-tunnel.err", "novnc", "novnc.err", "desk-tunnel", "desk-tunnel.err", "named-tunnel", "named-tunnel.err")) {
     $lp = Join-Path $RunDir "$name.log"
     if (Test-Path $lp) {
       $tail = (Get-Content $lp -Tail 12 -ErrorAction SilentlyContinue) -join "`n"
@@ -189,7 +202,7 @@ function Publish-Report([string]$Status, [string]$Note) {
   Set-Content -Path (Join-Path $rdir "reports/run-$RunId.md") -Value ($body -join "`n")
   Push-Location $rdir
   git add "reports/run-$RunId.md"
-  git -c user.email="giecko@local" -c user.name="giecko" commit -qm "report $RunId: $Status"
+  git -c user.email="giecko@local" -c user.name="giecko" commit -qm "report ${RunId}: $Status"
   git push -q -u origin giecko-reports 2>$null
   $rc = $LASTEXITCODE
   if ($rc -ne 0) {
@@ -320,7 +333,7 @@ if ($NeedTtyd) {
   $curlAuth = if ($Password) { "${User}:${Password}" } else { "" }
   $up = $false
   for ($i = 0; $i -lt 20; $i++) { if (Http-Up $TermPort $curlAuth) { $up = $true; break }; Start-Sleep -Seconds 1 }
-  if (-not $up) { Get-Content (Join-Path $RunDir "ttyd.log") -ErrorAction SilentlyContinue; Fail "ttyd failed to start" }
+  if (-not $up) { Get-ProcLog "ttyd"; Fail "ttyd failed to start" }
   Write-Host " ttyd is up"
 }
 
@@ -337,7 +350,7 @@ if ($CodeBin) {
   $up = $false
   for ($i = 0; $i -lt 45; $i++) { if (Http-Up $CodePort "") { $up = $true; break }; Start-Sleep -Seconds 2 }
   if ($up) { $CodeOk = $true; Write-Host " code-server is up" }
-  elseif ($CodeRequired) { Get-Content (Join-Path $RunDir "code-server.log") -Tail 10 -ErrorAction SilentlyContinue; Fail "code-server failed but stack=vscode needs it" }
+  elseif ($CodeRequired) { Get-ProcLog "code-server" 10; Fail "code-server failed but stack=vscode needs it" }
   else { Write-Host "  code-server didn't start, continuing terminal-only" }
 }
 
@@ -547,7 +560,7 @@ else:
   $DeskProcs += $wsProc
   $up = $false
   for ($i = 0; $i -lt 30; $i++) { if (Http-Up $DeskPort "") { $up = $true; break }; Start-Sleep -Seconds 1 }
-  if (-not $up) { Get-Content (Join-Path $RunDir "novnc.log") -ErrorAction SilentlyContinue; Fail "noVNC failed to start" }
+  if (-not $up) { Get-ProcLog "novnc"; Fail "noVNC failed to start" }
   $DeskOk = $true
   Write-Host " desktop is up"
 }
@@ -561,7 +574,8 @@ if ($env:CF_TUNNEL_TOKEN) {
   $up = $false
   for ($i = 0; $i -lt 45; $i++) {
     $nl = Join-Path $RunDir "named-tunnel.log"
-    if ((Test-Path $nl) -and (Select-String -Path $nl -Pattern "Registered tunnel connection" -Quiet)) { $up = $true; break }
+    $nle = Join-Path $RunDir "named-tunnel.err.log"
+    if (((Test-Path $nl) -and (Select-String -Path $nl -Pattern "Registered tunnel connection" -Quiet)) -or ((Test-Path $nle) -and (Select-String -Path $nle -Pattern "Registered tunnel connection" -Quiet))) { $up = $true; break }
     if ($np.HasExited) { break }
     Start-Sleep -Seconds 2
   }
@@ -571,7 +585,7 @@ if ($env:CF_TUNNEL_TOKEN) {
     if ($DeskOk) { $UrlDesk = "named-tunnel" }
     Write-Host " named tunnel is up"
   } else {
-    Get-Content (Join-Path $RunDir "named-tunnel.log") -Tail 10 -ErrorAction SilentlyContinue
+    Get-ProcLog "named-tunnel" 10
     Fail "named tunnel failed to connect (check the token and your Cloudflare dashboard)"
   }
 } else {
@@ -580,7 +594,7 @@ if ($env:CF_TUNNEL_TOKEN) {
     $tp = Start-Tunnel $TermPort "term-tunnel"
     $TunnelProcs += $tp
     $UrlTerm = Wait-Tunnel "term-tunnel" $tp
-    if (-not $UrlTerm) { Get-Content (Join-Path $RunDir "term-tunnel.log") -ErrorAction SilentlyContinue; Fail "terminal tunnel failed" }
+    if (-not $UrlTerm) { Get-ProcLog "term-tunnel"; Fail "terminal tunnel failed" }
   }
   if ($CodeOk) {
     Write-Host "  opening vscode tunnel..."
@@ -588,7 +602,7 @@ if ($env:CF_TUNNEL_TOKEN) {
     $TunnelProcs += $cp
     $UrlCode = Wait-Tunnel "code-tunnel" $cp
     if (-not $UrlCode) {
-      if ($CodeRequired) { Get-Content (Join-Path $RunDir "code-tunnel.log") -ErrorAction SilentlyContinue; Fail "vscode tunnel failed but stack=vscode needs it" }
+      if ($CodeRequired) { Get-ProcLog "code-tunnel"; Fail "vscode tunnel failed but stack=vscode needs it" }
       Write-Host "  vscode tunnel failed, continuing terminal-only"
       $CodeOk = $false
     }
@@ -600,10 +614,12 @@ if ($DeskOk -and -not $Named) {
   $dp = Start-Tunnel $DeskPort "desk-tunnel"
   $TunnelProcs += $dp
   $UrlDesk = Wait-Tunnel "desk-tunnel" $dp
-  if (-not $UrlDesk) { Get-Content (Join-Path $RunDir "desk-tunnel.log") -ErrorAction SilentlyContinue; Fail "desktop tunnel failed" }
+  if (-not $UrlDesk) { Get-ProcLog "desk-tunnel"; Fail "desktop tunnel failed" }
   $UrlDesk = "$UrlDesk/vnc.html?autoconnect=true&resize=scale"
 }
 
+$BootSecs = [int]((Get-Date) - $BootStart).TotalSeconds
+$EndEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + $DurationI * 60 - $BootSecs
 $envContent = @"
 GIECKO_URL_TERM='$UrlTerm'
 GIECKO_URL_CODE='$UrlCode'
@@ -620,8 +636,6 @@ GIECKO_BOOT_SECS='$BootSecs'
 GIECKO_NAMED='$Named'
 GIECKO_PERSIST='$PersistHome'
 "@
-$BootSecs = [int]((Get-Date) - $BootStart).TotalSeconds
-$EndEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + $DurationI * 60 - $BootSecs
 if ($env:GIECKO_CONFIG_DIR) {
   New-Item -ItemType Directory -Force -Path $env:GIECKO_CONFIG_DIR | Out-Null
   Set-Content -Path (Join-Path $env:GIECKO_CONFIG_DIR "giecko.env") -Value $envContent
@@ -693,13 +707,13 @@ $LastSave = Get-Date
 
 $End = (Get-Date).AddMinutes($DurationI)
 while ((Get-Date) -lt $End) {
-  if ($NeedTtyd -and $TtydProc -and $TtydProc.HasExited) { Get-Content (Join-Path $RunDir "ttyd.log") -Tail 20 -ErrorAction SilentlyContinue; Fail "ttyd died mid-run" }
+  if ($NeedTtyd -and $TtydProc -and $TtydProc.HasExited) { Get-ProcLog "ttyd" 20; Fail "ttyd died mid-run" }
   if ($Named) {
     $np2 = $TunnelProcs | Select-Object -First 1
-    if ($np2 -and $np2.HasExited) { Get-Content (Join-Path $RunDir "named-tunnel.log") -Tail 20 -ErrorAction SilentlyContinue; Fail "named tunnel died mid-run" }
+    if ($np2 -and $np2.HasExited) { Get-ProcLog "named-tunnel" 20; Fail "named tunnel died mid-run" }
   } elseif ($NeedTtyd -and $TunnelProcs.Count -gt 0) {
     $tp2 = $TunnelProcs[0]
-    if ($tp2 -and $tp2.HasExited) { Get-Content (Join-Path $RunDir "term-tunnel.log") -Tail 20 -ErrorAction SilentlyContinue; Fail "terminal tunnel died mid-run" }
+    if ($tp2 -and $tp2.HasExited) { Get-ProcLog "term-tunnel" 20; Fail "terminal tunnel died mid-run" }
   }
   if ($CodeOk -and $CodeProc -and $CodeProc.HasExited) {
     if ($CodeRequired) { Fail "vscode side died mid-run (stack=vscode)" }
@@ -707,7 +721,7 @@ while ((Get-Date) -lt $End) {
     if (-not $CodeWarned) { Write-Host "  vscode side died mid-run, terminal continues"; $CodeWarned = $true }
   }
   if ($DeskOk) {
-    foreach ($dp2 in $DeskProcs) { if ($dp2 -and $dp2.HasExited) { Get-Content (Join-Path $RunDir "novnc.log") -Tail 20 -ErrorAction SilentlyContinue; Fail "noVNC died mid-run" } }
+    foreach ($dp2 in $DeskProcs) { if ($dp2 -and $dp2.HasExited) { Get-ProcLog "novnc" 20; Fail "noVNC died mid-run" } }
   }
   if ($AutosaveI -gt 0 -and $gieckoCli -and $bashBin -and ((Get-Date) - $LastSave).TotalMinutes -ge $AutosaveI) {
     Push-Location $WorkDir
