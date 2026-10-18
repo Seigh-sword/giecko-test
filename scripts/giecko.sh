@@ -170,6 +170,9 @@ _publish_report_inner() {
     echo "- time_utc: $(date -u '+%Y-%m-%d %H:%M:%S')"
     echo "- os: $OSNAME, stack: $STACK, distro: $DISTRO (effective: $DISTRO_EFF)"
     echo "- user: $USER, auth: $([ -n "$PASSWORD" ] && echo "on" || echo "OFF (open)"), mask: $MASK, duration_min: $DURATION_MIN, autosave_min: $AUTOSAVE_MIN"
+    if [ "${SUDO_OK:-0}" = 1 ]; then echo "- sudo: passwordless for $USER"
+    elif [ "${SESS_USER_OK:-0}" = 1 ]; then echo "- sudo: not granted (locked)"
+    else echo "- sudo: passwordless (base user)"; fi
     echo "- region: ${REGION:-unknown}, egress_ip: ${EGRESS_IP:-?}"
     echo "- boot_seconds: ${BOOT_SECS:-$((SECONDS - BOOT_START))}, heartbeats: $HEARTBEATS"
     echo "- url_terminal: $([ -n "$URL_TERM" ] && pub_url "$URL_TERM" || echo "NO")"
@@ -686,6 +689,30 @@ ensure_session_user() {
 }
 ensure_session_user || true
 
+SUDO_OK=0
+grant_sudo() {
+  [ "$SESS_USER_OK" = 1 ] || return 0
+  [ "$IS_WINDOWS" = 0 ] || return 0
+  if [ "$CAN_ROOT" != 1 ]; then echo "  no root here, sudo stays as the base image ships it"; return 0; fi
+  local ok=1
+  priv mkdir -p /etc/sudoers.d 2>/dev/null || ok=0
+  if [ "$ok" = 1 ]; then
+    printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$USER" | priv tee /etc/sudoers.d/giecko-sess >/dev/null 2>/dev/null || ok=0
+    priv chmod 0440 /etc/sudoers.d/giecko-sess 2>/dev/null || ok=0
+    if [ "$ok" = 1 ] && command -v visudo >/dev/null 2>&1; then
+      priv visudo -cf /etc/sudoers.d/giecko-sess >/dev/null 2>&1 || ok=0
+    fi
+  fi
+  if [ "$ok" = 1 ]; then
+    SUDO_OK=1
+    echo " sudo: passwordless for $USER (the machine is yours, it dies with the run)"
+  else
+    priv rm -f /etc/sudoers.d/giecko-sess 2>/dev/null || true
+    echo "  could not grant sudo to $USER, it will keep asking for a password that does not exist"
+  fi
+}
+grant_sudo || true
+
 CODE_BIN="${CODE_BIN:-}"
 if [ "$NEED_CODE" = 1 ] && [ "$CODE_DL_OK" = 1 ] && [ -z "$CODE_BIN" ] && [ -d /tmp/giecko-ide ]; then
   _idesrc="$(find /tmp/giecko-ide -maxdepth 2 -type d -name 'giecko-ide-*' | head -n 1)"
@@ -908,11 +935,11 @@ share_workspace || true
 setup_distro() {
   local img setup
   case "$DISTRO" in
-    ubuntu) img="ubuntu:24.04"; setup="apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tmux curl ca-certificates bash";;
-    debian) img="debian:12"; setup="apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tmux curl ca-certificates bash";;
-    fedora) img="fedora:42"; setup="dnf install -y -q tmux curl ca-certificates bash";;
-    arch) img="archlinux:base"; setup="pacman -Sy --noconfirm --quiet tmux curl ca-certificates bash";;
-    alpine) img="alpine:3.21"; setup="apk add --no-cache tmux curl ca-certificates bash";;
+    ubuntu) img="ubuntu:24.04"; setup="apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tmux curl ca-certificates bash sudo";;
+    debian) img="debian:12"; setup="apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tmux curl ca-certificates bash sudo";;
+    fedora) img="fedora:42"; setup="dnf install -y -q tmux curl ca-certificates bash sudo";;
+    arch) img="archlinux:base"; setup="pacman -Sy --noconfirm --quiet tmux curl ca-certificates bash sudo";;
+    alpine) img="alpine:3.21"; setup="apk add --no-cache tmux curl ca-certificates bash sudo";;
     *) return 1;;
   esac
   command -v docker >/dev/null 2>&1 || { echo "  no docker, distro unavailable"; return 1; }
@@ -929,6 +956,7 @@ setup_distro() {
     [ "$DISTRO" = "alpine" ] && docker exec giecko-box sh -c "apk add --no-cache shadow >/dev/null 2>&1" || true
     docker exec giecko-box sh -c "groupadd -g $cgid gwork 2>/dev/null; useradd -m -u $cuid -g $cgid -s /bin/bash $USER 2>/dev/null || adduser -D -u $cuid -G gwork -s /bin/bash $USER 2>/dev/null" >/dev/null 2>&1 || true
     docker exec giecko-box sh -c "echo 'umask 002' >> /home/$USER/.profile 2>/dev/null; echo 'umask 002' >> /home/$USER/.bashrc 2>/dev/null" >/dev/null 2>&1 || true
+    docker exec giecko-box sh -c "mkdir -p /etc/sudoers.d 2>/dev/null; printf '%s ALL=(ALL) NOPASSWD: ALL\n' '$USER' > /etc/sudoers.d/giecko-sess 2>/dev/null && chmod 0440 /etc/sudoers.d/giecko-sess && ( ! command -v visudo >/dev/null 2>&1 || visudo -cf /etc/sudoers.d/giecko-sess >/dev/null 2>&1 || rm -f /etc/sudoers.d/giecko-sess )" >/dev/null 2>&1 || true
   fi
   if [ -n "$USER" ] && docker exec giecko-box id -u "$USER" >/dev/null 2>&1 && docker exec giecko-box command -v bash >/dev/null 2>&1; then
     if docker exec giecko-box command -v tmux >/dev/null 2>&1; then CONTAINER_SHELL=(su - "$USER" -c "tmux new -A -s giecko")
