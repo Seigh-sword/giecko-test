@@ -91,7 +91,8 @@ function Http-Up([int]$Port, [string]$UserPass) {
 function Start-Procx([string]$File, [string[]]$ProcArgs, [string]$Name) {
   $stdout = Join-Path $RunDir "$Name.log"
   $stderr = Join-Path $RunDir "$Name.err.log"
-  $p = Start-Process -FilePath $File -ArgumentList $ProcArgs -WorkingDirectory $WorkDir -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden
+  $safeArgs = @($ProcArgs | ForEach-Object { if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } })
+  $p = Start-Process -FilePath $File -ArgumentList $safeArgs -WorkingDirectory $WorkDir -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden
   return $p
 }
 
